@@ -14,12 +14,12 @@ export default function DeviationsTable({ data, loading }: Props) {
       loading={loading}
       pagination={false}
       columns={[
-        { title: 'Edge ID', dataIndex: 'edge_id', key: 'edge_id' },
-        { title: 'Type', dataIndex: 'type', key: 'type' },
-        { title: 'Value', dataIndex: 'value', key: 'value' },
-        { title: 'Reference', dataIndex: 'reference', key: 'reference' },
+        { title: 'Ребро', dataIndex: 'edge_id', key: 'edge_id' },
+        { title: 'Параметр', dataIndex: 'type', key: 'type' },
+        { title: 'Значение', dataIndex: 'value', key: 'value' },
+        { title: 'Эталон', dataIndex: 'reference', key: 'reference' },
         {
-          title: 'Level',
+          title: 'Уровень',
           dataIndex: 'level',
           key: 'level',
           render: (level: Deviation['level']) => {
@@ -28,8 +28,8 @@ export default function DeviationsTable({ data, loading }: Props) {
             return <Tag color={color}>{level}</Tag>;
           },
         },
-        { title: 'Regulation', dataIndex: 'regulation', key: 'regulation' },
-        { title: 'Recommendation', dataIndex: 'recommendation', key: 'recommendation' },
+        { title: 'Регламент', dataIndex: 'regulation', key: 'regulation' },
+        { title: 'Рекомендация', dataIndex: 'recommendation', key: 'recommendation' },
       ]}
     />
   );

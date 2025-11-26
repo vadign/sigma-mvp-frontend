@@ -23,16 +23,16 @@ export default function RegulationsEditor({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <Space>
         <Button onClick={onLoad} loading={loading}>
-          Load
+          Загрузить
         </Button>
         <Button onClick={onCreate} loading={loading}>
-          Create
+          Создать
         </Button>
         <Button type="primary" onClick={onUpdate} loading={loading}>
-          Save (Update)
+          Сохранить
         </Button>
         <Button danger onClick={onDelete} loading={loading}>
-          Delete
+          Удалить
         </Button>
       </Space>
       <Input.TextArea rows={12} value={value} onChange={(e) => onChange(e.target.value)} />

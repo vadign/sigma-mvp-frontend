@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Button, Form, Input, Modal, Space, Table, Typography, message } from 'antd';
+import { Button, Form, Input, Modal, Space, Table, Typography, message, Card } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -13,7 +13,6 @@ import { Network, NetworkCreateRequest, NetworkUpdateRequest } from '../../types
 export default function NetworksPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editing, setEditing] = useState<Network | null>(null);
 
@@ -22,41 +21,40 @@ export default function NetworksPage() {
   const createMutation = useMutation({
     mutationFn: (values: NetworkCreateRequest) => createNetwork(values),
     onSuccess: () => {
-      message.success('Network created');
-      setIsCreateOpen(false);
+      message.success('Сеть создана');
       queryClient.invalidateQueries({ queryKey: ['networks'] });
     },
-    onError: () => message.error('Failed to create network'),
+    onError: () => message.error('Не удалось создать сеть'),
   });
 
   const editMutation = useMutation({
     mutationFn: ({ id, values }: { id: string; values: NetworkUpdateRequest }) =>
       updateNetwork(id, values),
     onSuccess: () => {
-      message.success('Network updated');
+      message.success('Сеть обновлена');
       setIsEditOpen(false);
       setEditing(null);
       queryClient.invalidateQueries({ queryKey: ['networks'] });
     },
-    onError: () => message.error('Failed to update network'),
+    onError: () => message.error('Не удалось обновить сеть'),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteNetwork(id),
     onSuccess: () => {
-      message.success('Network deleted');
+      message.success('Сеть удалена');
       queryClient.invalidateQueries({ queryKey: ['networks'] });
     },
-    onError: () => message.error('Failed to delete network'),
+    onError: () => message.error('Не удалось удалить сеть'),
   });
 
   const columns = useMemo(
     () => [
-      { title: 'Name', dataIndex: 'name', key: 'name' },
-      { title: 'Description', dataIndex: 'description', key: 'description' },
-      { title: 'Workspace ID', dataIndex: 'workspace_id', key: 'workspace_id' },
+      { title: 'Название', dataIndex: 'name', key: 'name' },
+      { title: 'Описание', dataIndex: 'description', key: 'description' },
+      { title: 'ID рабочей области', dataIndex: 'workspace_id', key: 'workspace_id' },
       {
-        title: 'Actions',
+        title: 'Действия',
         key: 'actions',
         render: (_: unknown, record: Network) => (
           <Space>
@@ -68,7 +66,7 @@ export default function NetworksPage() {
                 setIsEditOpen(true);
               }}
             >
-              Edit
+              Редактировать
             </Button>
             <Button
               type="link"
@@ -76,12 +74,12 @@ export default function NetworksPage() {
               onClick={(e) => {
                 e.stopPropagation();
                 Modal.confirm({
-                  title: 'Delete network?',
+                  title: 'Удалить сеть?',
                   onOk: () => deleteMutation.mutate(record.id),
                 });
               }}
             >
-              Delete
+              Удалить
             </Button>
           </Space>
         ),
@@ -91,44 +89,49 @@ export default function NetworksPage() {
   );
 
   return (
-    <div className="content-card">
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between' }}>
-        <Typography.Title level={3} style={{ margin: 0 }}>
-          Networks
-        </Typography.Title>
-        <Button type="primary" onClick={() => setIsCreateOpen(true)}>
-          Create Network
-        </Button>
+    <div className="content-card" style={{ display: 'grid', gap: 20, gridTemplateColumns: '2fr 1fr' }}>
+      <div>
+        <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+          <div>
+            <Typography.Title level={3} style={{ margin: 0 }}>
+              Сети
+            </Typography.Title>
+            <Typography.Text type="secondary">
+              Управляйте сетями и переходите к деталям в один клик.
+            </Typography.Text>
+          </div>
+          <Button type="primary" onClick={() => navigate('/admin')}>
+            Администрирование
+          </Button>
+        </div>
+        {isLoading && <Typography.Text>Загрузка...</Typography.Text>}
+        {error && (
+          <Typography.Text type="danger">{(error as Error).message || 'Не удалось загрузить'}</Typography.Text>
+        )}
+        <Table
+          rowKey="id"
+          dataSource={data}
+          columns={columns}
+          loading={isLoading}
+          size="middle"
+          onRow={(record) => ({
+            onClick: () => navigate(`/networks/${record.id}`),
+          })}
+        />
       </div>
-      {isLoading && <Typography.Text>Loading...</Typography.Text>}
-      {error && (
-        <Typography.Text type="danger">{(error as Error).message || 'Failed to load'}</Typography.Text>
-      )}
-      <Table
-        rowKey="id"
-        dataSource={data}
-        columns={columns}
-        loading={isLoading}
-        onRow={(record) => ({
-          onClick: () => navigate(`/networks/${record.id}`),
-        })}
-      />
 
-      <Modal
-        title="Create Network"
-        open={isCreateOpen}
-        onCancel={() => setIsCreateOpen(false)}
-        footer={null}
-        destroyOnClose
-      >
+      <Card title="Быстрое создание" bordered={false} style={{ boxShadow: '0 8px 30px rgba(0,0,0,0.05)' }}>
+        <Typography.Paragraph type="secondary">
+          Добавьте новую сеть без переходов и дополнительных кликов.
+        </Typography.Paragraph>
         <NetworkForm
           onSubmit={(values) => createMutation.mutate(values as NetworkCreateRequest)}
           loading={createMutation.isPending}
         />
-      </Modal>
+      </Card>
 
       <Modal
-        title="Edit Network"
+        title="Редактирование сети"
         open={isEditOpen}
         onCancel={() => setIsEditOpen(false)}
         footer={null}
@@ -160,17 +163,21 @@ function NetworkForm({
   const [form] = Form.useForm();
   return (
     <Form form={form} layout="vertical" initialValues={initialValues} onFinish={onSubmit}>
-      <Form.Item name="workspace_id" label="Workspace ID" rules={[{ required: true }]}>
+      <Form.Item
+        name="workspace_id"
+        label="ID рабочей области"
+        rules={[{ required: true, message: 'Укажите ID рабочей области' }]}
+      >
         <Input />
       </Form.Item>
-      <Form.Item name="name" label="Name" rules={[{ required: true }]}>
+      <Form.Item name="name" label="Название" rules={[{ required: true, message: 'Введите название сети' }]}>
         <Input />
       </Form.Item>
-      <Form.Item name="description" label="Description" rules={[{ required: true }]}>
+      <Form.Item name="description" label="Описание" rules={[{ required: true, message: 'Добавьте описание' }]}>
         <Input.TextArea rows={3} />
       </Form.Item>
       <Button type="primary" htmlType="submit" loading={loading} block>
-        Submit
+        Сохранить
       </Button>
     </Form>
   );

@@ -21,7 +21,7 @@ export default function LogsTable({ data, loading, onSelect }: Props) {
       columns={[
         { title: 'ID', dataIndex: 'id', key: 'id' },
         {
-          title: 'Timestamp',
+          title: 'Дата и время',
           dataIndex: 'timestamp',
           key: 'timestamp',
           render: (value: string) => dayjs(value).format('YYYY-MM-DD HH:mm:ss'),

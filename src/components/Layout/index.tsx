@@ -1,4 +1,4 @@
-import { Layout, Menu, Typography } from 'antd';
+import { Layout, Menu, Typography, Space } from 'antd';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { ReactNode, useMemo } from 'react';
 
@@ -10,10 +10,10 @@ interface MenuItem {
 }
 
 const menuItems: MenuItem[] = [
-  { key: '/networks', label: <Link to="/networks">Networks</Link> },
-  { key: '/users', label: <Link to="/users">Users</Link> },
-  { key: '/regulations', label: <Link to="/regulations">Regulations</Link> },
-  { key: '/admin', label: <Link to="/admin">Admin</Link> },
+  { key: '/networks', label: <Link to="/networks">Сети</Link> },
+  { key: '/users', label: <Link to="/users">Пользователи</Link> },
+  { key: '/regulations', label: <Link to="/regulations">Регламенты</Link> },
+  { key: '/admin', label: <Link to="/admin">Администрирование</Link> },
 ];
 
 export default function AppLayout() {
@@ -25,10 +25,18 @@ export default function AppLayout() {
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Header style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-        <Typography.Title level={3} style={{ color: '#fff', margin: 0 }}>
-          Sigma Monitoring
-        </Typography.Title>
+      <Header className="app-shell__header">
+        <Space size={20} align="center">
+          <div className="brand-badge">Σ</div>
+          <div>
+            <Typography.Title level={4} style={{ color: '#fff', margin: 0 }}>
+              Sigma Мониторинг
+            </Typography.Title>
+            <Typography.Text style={{ color: 'rgba(255,255,255,0.75)' }}>
+              Единая панель наблюдения за сетями
+            </Typography.Text>
+          </div>
+        </Space>
         <Menu
           theme="dark"
           mode="horizontal"
@@ -36,7 +44,7 @@ export default function AppLayout() {
           items={menuItems.map((item) => ({ key: item.key, label: item.label }))}
         />
       </Header>
-      <Content style={{ padding: '24px' }}>
+      <Content className="app-shell__content">
         <Outlet />
       </Content>
     </Layout>

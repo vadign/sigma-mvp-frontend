@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Button, DatePicker, Descriptions, Form, Input, Space, Tabs, Typography, message } from 'antd';
+import { Button, DatePicker, Descriptions, Form, Input, Space, Tabs, Typography, message, Tag } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from 'react-router-dom';
@@ -40,45 +40,61 @@ export default function NetworkDetailsPage() {
   const editMutation = useMutation({
     mutationFn: (values: NetworkUpdateRequest) => updateNetwork(networkId || '', values),
     onSuccess: () => {
-      message.success('Network updated');
+      message.success('Сеть обновлена');
       queryClient.invalidateQueries({ queryKey: ['networks'] });
     },
-    onError: () => message.error('Failed to update network'),
+    onError: () => message.error('Не удалось обновить сеть'),
   });
 
   useEffect(() => {
     if (networkId && selectedLog) {
       getDeviations(networkId, selectedLog.id)
         .then(setDeviations)
-        .catch(() => message.error('Failed to load deviations'));
+        .catch(() => message.error('Не удалось загрузить отклонения'));
     }
   }, [networkId, selectedLog]);
 
-  if (!networkId) return <Typography.Text>Network not found</Typography.Text>;
+  useEffect(() => {
+    if (!selectedLog && logsQuery.data && logsQuery.data.length > 0) {
+      setSelectedLog(logsQuery.data[0]);
+    }
+  }, [logsQuery.data, selectedLog]);
+
+  if (!networkId) return <Typography.Text>Сеть не найдена</Typography.Text>;
 
   return (
     <div className="content-card">
-      <Typography.Title level={3}>Network details</Typography.Title>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <Typography.Title level={3} style={{ margin: 0 }}>
+            Детали сети
+          </Typography.Title>
+          <Typography.Text type="secondary">
+            Вся информация, топология и журнал отклонений в одном месте.
+          </Typography.Text>
+        </div>
+        <Tag color="blue">ID: {networkId}</Tag>
+      </div>
       <Tabs
         defaultActiveKey="info"
         items={[
           {
             key: 'info',
-            label: 'Information',
+            label: 'Информация',
             children: (
               <div style={{ maxWidth: 600 }}>
                 {network ? (
                   <Descriptions bordered column={1} size="small">
                     <Descriptions.Item label="ID">{network.id}</Descriptions.Item>
-                    <Descriptions.Item label="Workspace ID">{network.workspace_id}</Descriptions.Item>
-                    <Descriptions.Item label="Name">{network.name}</Descriptions.Item>
-                    <Descriptions.Item label="Description">{network.description}</Descriptions.Item>
+                    <Descriptions.Item label="ID рабочей области">{network.workspace_id}</Descriptions.Item>
+                    <Descriptions.Item label="Название">{network.name}</Descriptions.Item>
+                    <Descriptions.Item label="Описание">{network.description}</Descriptions.Item>
                   </Descriptions>
                 ) : (
-                  <Typography.Text>Loading network info...</Typography.Text>
+                  <Typography.Text>Загрузка информации...</Typography.Text>
                 )}
                 <div style={{ marginTop: 16 }}>
-                  <Typography.Title level={5}>Edit network</Typography.Title>
+                  <Typography.Title level={5}>Редактировать сеть</Typography.Title>
                   <NetworkEditForm
                     initialValues={network}
                     onSubmit={(values) => editMutation.mutate(values)}
@@ -90,12 +106,12 @@ export default function NetworkDetailsPage() {
           },
           {
             key: 'topology',
-            label: 'Topology',
+            label: 'Топология',
             children: (
               <div className="topology-container">
-                {topologyQuery.isLoading && <Typography.Text>Loading topology...</Typography.Text>}
+                {topologyQuery.isLoading && <Typography.Text>Загрузка топологии...</Typography.Text>}
                 {topologyQuery.error && (
-                  <Typography.Text type="danger">Failed to load topology</Typography.Text>
+                  <Typography.Text type="danger">Не удалось загрузить топологию</Typography.Text>
                 )}
                 {topologyQuery.data && <NetworkTopology topology={topologyQuery.data} />}
               </div>
@@ -103,16 +119,16 @@ export default function NetworkDetailsPage() {
           },
           {
             key: 'logs',
-            label: 'Logs & Deviations',
+            label: 'Журналы и отклонения',
             children: (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                <Space>
+                <Space size={12} wrap>
                   <DatePicker.RangePicker
                     showTime
                     value={dateRange as [Dayjs | null, Dayjs | null] | null}
                     onChange={(vals) => setDateRange(vals)}
                   />
-                  <Button onClick={() => logsQuery.refetch()}>Refresh</Button>
+                  <Button onClick={() => logsQuery.refetch()}>Обновить</Button>
                 </Space>
                 <LogsTable
                   data={logsQuery.data}
@@ -120,7 +136,7 @@ export default function NetworkDetailsPage() {
                   onSelect={(log) => setSelectedLog(log)}
                 />
                 <div>
-                  <Typography.Title level={5}>Deviations</Typography.Title>
+                  <Typography.Title level={5}>Отклонения</Typography.Title>
                   <DeviationsTable data={deviations} />
                 </div>
               </div>
@@ -150,17 +166,17 @@ function NetworkEditForm({
 
   return (
     <Form form={form} layout="vertical" onFinish={onSubmit}>
-      <Form.Item name="workspace_id" label="Workspace ID">
+      <Form.Item name="workspace_id" label="ID рабочей области">
         <Input />
       </Form.Item>
-      <Form.Item name="name" label="Name">
+      <Form.Item name="name" label="Название">
         <Input />
       </Form.Item>
-      <Form.Item name="description" label="Description">
+      <Form.Item name="description" label="Описание">
         <Input.TextArea rows={3} />
       </Form.Item>
       <Button type="primary" htmlType="submit" loading={loading}>
-        Save
+        Сохранить
       </Button>
     </Form>
   );

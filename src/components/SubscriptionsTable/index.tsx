@@ -15,10 +15,10 @@ export default function SubscriptionsTable({ data, onUpdateLevel, onDelete }: Pr
       pagination={false}
       columns={[
         { title: 'ID', dataIndex: 'id', key: 'id' },
-        { title: 'Network ID', dataIndex: 'network_id', key: 'network_id' },
-        { title: 'Level', dataIndex: 'level', key: 'level' },
+        { title: 'Сеть', dataIndex: 'network_id', key: 'network_id' },
+        { title: 'Уровень', dataIndex: 'level', key: 'level' },
         {
-          title: 'Actions',
+          title: 'Действия',
           key: 'actions',
           render: (_: unknown, record: Subscription) => (
             <Space>
@@ -29,7 +29,7 @@ export default function SubscriptionsTable({ data, onUpdateLevel, onDelete }: Pr
                 onChange={(value) => onUpdateLevel(record.id, value as DeviationLevel)}
               />
               <Button danger type="link" onClick={() => onDelete(record.id)}>
-                Delete
+                Удалить
               </Button>
             </Space>
           ),

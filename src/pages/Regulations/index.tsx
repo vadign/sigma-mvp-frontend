@@ -25,9 +25,9 @@ export default function RegulationsPage() {
     try {
       const result = await action();
       onSuccess?.(result as string | undefined);
-      message.success('Success');
+      message.success('Успешно выполнено');
     } catch (err) {
-      message.error((err as Error)?.message ?? 'Request failed');
+      message.error((err as Error)?.message ?? 'Ошибка запроса');
     } finally {
       setLoading(false);
     }
@@ -35,13 +35,13 @@ export default function RegulationsPage() {
 
   return (
     <div className="content-card">
-      <Typography.Title level={3}>Regulations</Typography.Title>
+      <Typography.Title level={3}>Регламенты</Typography.Title>
       <Tabs
         defaultActiveKey="regulations"
         items={[
           {
             key: 'regulations',
-            label: 'Regulations Data',
+            label: 'Данные регламентов',
             children: (
               <RegulationsEditor
                 value={regulations}
@@ -56,7 +56,7 @@ export default function RegulationsPage() {
           },
           {
             key: 'shapes',
-            label: 'Shapes Data',
+            label: 'Shapes',
             children: (
               <RegulationsEditor
                 value={shapes}
