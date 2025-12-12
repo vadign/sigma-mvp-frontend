@@ -62,13 +62,17 @@ function RegulationsPage() {
       <Typography.Paragraph>
         Регламенты задают пороги и правила, по которым определяется уровень критичности и выдаются рекомендации.
       </Typography.Paragraph>
+      <Typography.Paragraph className="helper-text" style={{ marginBottom: 16 }}>
+        Когда параметр сети выходит за пределы, Сигма выбирает подходящий регламент, присваивает уровень критичности
+        и предлагает рекомендацию к действиям диспетчеру.
+      </Typography.Paragraph>
       {loading ? (
         <Spin />
       ) : (
         <Row gutter={16}>
           <Col span={12}>
             <Typography.Title level={5}>База регламентов</Typography.Title>
-            <TextArea rows={18} value={dataText} onChange={(e) => setDataText(e.target.value)} />
+            <TextArea rows={24} value={dataText} onChange={(e) => setDataText(e.target.value)} />
             <Space style={{ marginTop: 8 }}>
               <Button type="primary" onClick={() => save('data')}>
                 Сохранить регламенты
@@ -80,7 +84,7 @@ function RegulationsPage() {
           </Col>
           <Col span={12}>
             <Typography.Title level={5}>Граф валидации (shapes)</Typography.Title>
-            <TextArea rows={18} value={shapesText} onChange={(e) => setShapesText(e.target.value)} />
+            <TextArea rows={24} value={shapesText} onChange={(e) => setShapesText(e.target.value)} />
             <Space style={{ marginTop: 8 }}>
               <Button type="primary" onClick={() => save('shapes')}>
                 Сохранить граф валидации
@@ -92,11 +96,6 @@ function RegulationsPage() {
           </Col>
         </Row>
       )}
-
-      <Typography.Paragraph className="helper-text" style={{ marginTop: 16 }}>
-        Здесь хранятся пороги и правила. Когда параметр сети выходит за пределы, Сигма выбирает подходящий
-        регламент, присваивает level и предлагает recommendation диспетчеру.
-      </Typography.Paragraph>
     </div>
   );
 }
