@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Card,
   Col,
@@ -13,8 +13,6 @@ import {
   message,
 } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
-import { CircleMarker, MapContainer, TileLayer, Tooltip } from 'react-leaflet';
-import 'leaflet/dist/leaflet.css';
 import LevelTag from '../components/LevelTag';
 import {
   fetchDeviations,
@@ -26,6 +24,8 @@ import {
 import { DeviationGetResponse, EventResponse, NetworkResponse, TopologyGetResponse } from '../api/types';
 
 const { RangePicker } = DatePicker;
+
+declare const ymaps: any;
 
 function mercatorToLatLng(x?: number | null, y?: number | null) {
   if (x == null || y == null) return null;
@@ -45,6 +45,12 @@ function MayorDashboardPage() {
   const [loading, setLoading] = useState(false);
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null]>([null, null]);
   const [level, setLevel] = useState<1 | 2 | 3 | null>(null);
+  const [mapReady, setMapReady] = useState(false);
+
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapInstanceRef = useRef<any>(null);
+  const edgeObjectsRef = useRef<Map<number, any>>(new Map());
+  const nodesCollectionRef = useRef<any>(null);
 
   useEffect(() => {
     fetchNetworks()
@@ -53,6 +59,19 @@ function MayorDashboardPage() {
         if (list.length > 0) setSelectedNetwork(list[0].id);
       })
       .catch(() => message.error('Не удалось загрузить сети'));
+  }, []);
+
+  useEffect(() => {
+    if (typeof ymaps !== 'undefined') {
+      ymaps.ready(() => setMapReady(true));
+    }
+  }, []);
+
+  useEffect(() => () => {
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.destroy();
+      mapInstanceRef.current = null;
+    }
   }, []);
 
   useEffect(() => {
@@ -83,6 +102,85 @@ function MayorDashboardPage() {
     };
     loadTopologyAndDeviations();
   }, [selectedNetwork]);
+
+  useEffect(() => {
+    if (!mapReady || !topology) return;
+    const hotEdgeSet = new Set(deviations.filter((d) => d.level === 3).map((d) => d.edge_id));
+    renderTopologyOnMap(topology, hotEdgeSet);
+  }, [mapReady, topology, deviations]);
+
+  const renderTopologyOnMap = (data: TopologyGetResponse, hotEdges: Set<number>) => {
+    if (!mapContainerRef.current) return;
+
+    const nodes = data.nodes.filter((n) => n.WTK_x != null && n.WTK_y != null);
+    if (!mapInstanceRef.current) {
+      const centerCoords = nodes.length ? mercatorToLatLng(nodes[0].WTK_x, nodes[0].WTK_y) : [55.75, 37.61];
+      mapInstanceRef.current = new ymaps.Map(mapContainerRef.current, {
+        center: centerCoords,
+        zoom: 12,
+        controls: ['zoomControl', 'fullscreenControl', 'typeSelector'],
+      });
+    }
+
+    const map = mapInstanceRef.current;
+    map.geoObjects.removeAll();
+    edgeObjectsRef.current.clear();
+    nodesCollectionRef.current = new ymaps.GeoObjectCollection();
+
+    const edgeObjects = new ymaps.GeoObjectCollection();
+
+    data.edges.forEach((edge) => {
+      const fromNode = data.nodes.find((n) => n.id === edge.id_in);
+      const toNode = data.nodes.find((n) => n.id === edge.id_out);
+      const fromCoords = mercatorToLatLng(fromNode?.WTK_x, fromNode?.WTK_y);
+      const toCoords = mercatorToLatLng(toNode?.WTK_x, toNode?.WTK_y);
+
+      if (!fromCoords || !toCoords) return;
+
+      const isHot = hotEdges.has(edge.id);
+      const line = new ymaps.Polyline(
+        [fromCoords, toCoords],
+        {},
+        {
+          strokeColor: isHot ? '#ff4d4f' : '#4a90e2',
+          strokeWidth: isHot ? 5 : 3,
+          strokeOpacity: isHot ? 0.9 : 0.7,
+        },
+      );
+      edgeObjects.add(line);
+      edgeObjectsRef.current.set(edge.id, line);
+    });
+
+    nodes.forEach((node) => {
+      const coords = mercatorToLatLng(node.WTK_x, node.WTK_y);
+      if (!coords) return;
+      const isHotNode = data.edges.some(
+        (edge) => hotEdges.has(edge.id) && (edge.id_in === node.id || edge.id_out === node.id),
+      );
+      const placemark = new ymaps.Placemark(
+        coords,
+        {
+          balloonContent: `Узел ${node.id}<br/>WTK_x: ${node.WTK_x}<br/>WTK_y: ${node.WTK_y}`,
+        },
+        {
+          preset: 'islands#circleIcon',
+          iconColor: isHotNode ? '#ff4d4f' : '#1677ff',
+          iconCaption: `УЗ-${node.id}`,
+        },
+      );
+      nodesCollectionRef.current.add(placemark);
+    });
+
+    map.geoObjects.add(edgeObjects);
+    map.geoObjects.add(nodesCollectionRef.current);
+
+    if (nodesCollectionRef.current.getLength() > 0) {
+      const bounds = nodesCollectionRef.current.getBounds();
+      if (bounds) {
+        map.setBounds(bounds, { checkZoomRange: true, zoomMargin: 40 });
+      }
+    }
+  };
 
   const filteredEvents = useMemo(() => {
     return events.filter((ev) => {
@@ -121,8 +219,6 @@ function MayorDashboardPage() {
     });
     return Array.from(map.entries());
   }, [filteredEvents]);
-
-  const hotEdges = deviations.filter((d) => d.level === 3).map((d) => d.edge_id);
 
   return (
     <div>
@@ -233,21 +329,17 @@ function MayorDashboardPage() {
       <div className="page-section">
         <Card title="Карта горячих точек">
           {topology ? (
-            <MapContainer center={[55.75, 37.61]} zoom={11} style={{ height: 360 }}>
-              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-              {topology.nodes.map((node) => {
-                const coords = mercatorToLatLng(node.WTK_x, node.WTK_y);
-                if (!coords) return null;
-                const isHot = topology.edges.some(
-                  (edge) => hotEdges.includes(edge.id) && (edge.id_in === node.id || edge.id_out === node.id),
-                );
-                return (
-                  <CircleMarker key={node.id} center={coords} radius={isHot ? 10 : 6} color={isHot ? 'red' : '#1677ff'}>
-                    <Tooltip>Узел {node.id}</Tooltip>
-                  </CircleMarker>
-                );
-              })}
-            </MapContainer>
+            <div>
+              <div
+                id="mayorMap"
+                ref={mapContainerRef}
+                style={{ height: 380, width: '100%', borderRadius: 8, overflow: 'hidden' }}
+              />
+              <Typography.Paragraph style={{ marginTop: 12 }}>
+                На карте отображена топология теплосети. Красным подсвечены участки с критичными
+                отклонениями (уровень 3), остальная сеть показывается спокойным синим цветом.
+              </Typography.Paragraph>
+            </div>
           ) : (
             <Typography.Text>Выберите сеть, чтобы показать карту.</Typography.Text>
           )}
