@@ -28,9 +28,7 @@ export const fetchTopology = async (networkId: string): Promise<TopologyGetRespo
 };
 
 export const fetchLogs = async (networkId: string): Promise<LogsGetResponse[]> => {
-  const { data } = await api.get<LogsGetResponse[]>(`/api/v1/networks/${networkId}/logs`, {
-    params: { date_from: '', date_to: '' },
-  });
+  const { data } = await api.get<LogsGetResponse[]>(`/api/v1/networks/${networkId}/logs`);
   return data;
 };
 
