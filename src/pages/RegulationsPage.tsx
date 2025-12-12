@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Button, Col, Input, Row, Space, Spin, Typography, message } from 'antd';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Button, Col, Row, Space, Spin, Typography, message } from 'antd';
 import {
   clearRegulationsData,
   clearRegulationsShapes,
@@ -8,8 +8,16 @@ import {
   saveRegulationsData,
   saveRegulationsShapes,
 } from '../api/client';
+import CodeEditor from '@uiw/react-textarea-code-editor';
+import 'prismjs/themes/prism.css';
+import '@uiw/react-textarea-code-editor/dist.css';
 
-const { TextArea } = Input;
+const editorStyle: React.CSSProperties = {
+  fontFamily: 'Menlo, Monaco, Consolas, "Courier New", monospace',
+  minHeight: 360,
+  borderRadius: 8,
+  padding: 12,
+};
 
 function RegulationsPage() {
   const [dataText, setDataText] = useState('');
@@ -56,6 +64,8 @@ function RegulationsPage() {
     }
   };
 
+  const memoizedStyle = useMemo(() => ({ ...editorStyle }), []);
+
   return (
     <div>
       <Typography.Title level={3}>Регламенты</Typography.Title>
@@ -72,7 +82,14 @@ function RegulationsPage() {
         <Row gutter={16}>
           <Col span={12}>
             <Typography.Title level={5}>База регламентов</Typography.Title>
-            <TextArea rows={24} value={dataText} onChange={(e) => setDataText(e.target.value)} />
+            <CodeEditor
+              value={dataText}
+              language="turtle"
+              placeholder="Вставьте содержимое базы регламентов"
+              onChange={(event) => setDataText(event.target.value)}
+              padding={12}
+              style={memoizedStyle}
+            />
             <Space style={{ marginTop: 8 }}>
               <Button type="primary" onClick={() => save('data')}>
                 Сохранить регламенты
@@ -84,7 +101,14 @@ function RegulationsPage() {
           </Col>
           <Col span={12}>
             <Typography.Title level={5}>Граф валидации (shapes)</Typography.Title>
-            <TextArea rows={24} value={shapesText} onChange={(e) => setShapesText(e.target.value)} />
+            <CodeEditor
+              value={shapesText}
+              language="turtle"
+              placeholder="Вставьте граф валидации (shapes)"
+              onChange={(event) => setShapesText(event.target.value)}
+              padding={12}
+              style={memoizedStyle}
+            />
             <Space style={{ marginTop: 8 }}>
               <Button type="primary" onClick={() => save('shapes')}>
                 Сохранить граф валидации
