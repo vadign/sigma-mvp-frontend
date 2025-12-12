@@ -35,6 +35,7 @@ function RegulationsPage() {
   }, []);
 
   useEffect(() => {
+    if (loading) return;
     if (dataTextareaRef.current && !dataEditorRef.current) {
       const editor = CodeMirror.fromTextArea(dataTextareaRef.current, {
         mode: 'text/turtle',
@@ -61,16 +62,17 @@ function RegulationsPage() {
       editor.setSize('100%', '420px');
       shapesEditorRef.current = editor;
     }
-    return () => {
-      if (dataEditorRef.current) {
-        dataEditorRef.current.toTextArea();
-        dataEditorRef.current = null;
-      }
-      if (shapesEditorRef.current) {
-        shapesEditorRef.current.toTextArea();
-        shapesEditorRef.current = null;
-      }
-    };
+  }, [loading]);
+
+  useEffect(() => () => {
+    if (dataEditorRef.current) {
+      dataEditorRef.current.toTextArea();
+      dataEditorRef.current = null;
+    }
+    if (shapesEditorRef.current) {
+      shapesEditorRef.current.toTextArea();
+      shapesEditorRef.current = null;
+    }
   }, []);
 
   useEffect(() => {
