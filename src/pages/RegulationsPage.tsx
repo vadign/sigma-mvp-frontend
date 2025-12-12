@@ -64,6 +64,8 @@ const RegulationsPage: React.FC = () => {
 
   const dataTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const shapesTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const dataContainerRef = useRef<HTMLDivElement | null>(null);
+  const shapesContainerRef = useRef<HTMLDivElement | null>(null);
   const dataEditorRef = useRef<EditorFromTextArea | null>(null);
   const shapesEditorRef = useRef<EditorFromTextArea | null>(null);
   const dataSilentChange = useRef(false);
@@ -74,7 +76,7 @@ const RegulationsPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (dataTextareaRef.current && !dataEditorRef.current) {
+    if (dataTextareaRef.current && dataContainerRef.current && !dataEditorRef.current) {
       const editor = CodeMirror.fromTextArea(dataTextareaRef.current, {
         mode: 'turtle-owl-plus',
         theme: 'eclipse',
@@ -82,6 +84,9 @@ const RegulationsPage: React.FC = () => {
         lineWrapping: true,
       });
       editor.setSize(editorSize.width, editorSize.height);
+      if (dataContainerRef.current) {
+        dataContainerRef.current.appendChild(editor.getWrapperElement());
+      }
       editor.on('change', (instance) => {
         const value = instance.getValue();
         if (dataSilentChange.current) {
@@ -96,7 +101,7 @@ const RegulationsPage: React.FC = () => {
       setTimeout(() => editor.refresh(), 300);
     }
 
-    if (shapesTextareaRef.current && !shapesEditorRef.current) {
+    if (shapesTextareaRef.current && shapesContainerRef.current && !shapesEditorRef.current) {
       const editor = CodeMirror.fromTextArea(shapesTextareaRef.current, {
         mode: 'turtle-owl-plus',
         theme: 'eclipse',
@@ -104,6 +109,9 @@ const RegulationsPage: React.FC = () => {
         lineWrapping: true,
       });
       editor.setSize(editorSize.width, editorSize.height);
+      if (shapesContainerRef.current) {
+        shapesContainerRef.current.appendChild(editor.getWrapperElement());
+      }
       editor.on('change', (instance) => {
         const value = instance.getValue();
         if (shapesSilentChange.current) {
@@ -165,7 +173,7 @@ const RegulationsPage: React.FC = () => {
       setDataText(normalized);
       setDataDirty(false);
       updateEditorValue(dataEditorRef, dataSilentChange, normalized);
-      setStatus({ type: 'success', text: 'Regulations data loaded' });
+      setStatus({ type: 'success', text: 'База регламентов загружена' });
     } catch (error) {
       setStatus({ type: 'error', text: extractError(error) });
     } finally {
@@ -182,7 +190,7 @@ const RegulationsPage: React.FC = () => {
       setShapesText(normalized);
       setShapesDirty(false);
       updateEditorValue(shapesEditorRef, shapesSilentChange, normalized);
-      setStatus({ type: 'success', text: 'Validation shapes loaded' });
+      setStatus({ type: 'success', text: 'Граф валидации загружен' });
     } catch (error) {
       setStatus({ type: 'error', text: extractError(error) });
     } finally {
@@ -215,13 +223,13 @@ const RegulationsPage: React.FC = () => {
     runWithStatus(async () => {
       await createRegulationsData(dataText);
       setDataDirty(false);
-    }, 'Regulations created', setDataLoading);
+    }, 'База регламентов создана', setDataLoading);
 
   const handleUpdateData = () =>
     runWithStatus(async () => {
       await updateRegulationsData(dataText);
       setDataDirty(false);
-    }, 'Regulations updated', setDataLoading);
+    }, 'База регламентов обновлена', setDataLoading);
 
   const handleDeleteData = () => {
     if (!window.confirm('Удалить содержимое? Это действие необратимо')) return;
@@ -231,20 +239,20 @@ const RegulationsPage: React.FC = () => {
       setDataText(cleared);
       setDataDirty(false);
       updateEditorValue(dataEditorRef, dataSilentChange, cleared);
-    }, 'Regulations deleted', setDataLoading);
+    }, 'База регламентов удалена', setDataLoading);
   };
 
   const handleCreateShapes = () =>
     runWithStatus(async () => {
       await createRegulationsShapes(shapesText);
       setShapesDirty(false);
-    }, 'Validation shapes created', setShapesLoading);
+    }, 'Граф валидации создан', setShapesLoading);
 
   const handleUpdateShapes = () =>
     runWithStatus(async () => {
       await updateRegulationsShapes(shapesText);
       setShapesDirty(false);
-    }, 'Validation shapes updated', setShapesLoading);
+    }, 'Граф валидации обновлён', setShapesLoading);
 
   const handleDeleteShapes = () => {
     if (!window.confirm('Удалить содержимое? Это действие необратимо')) return;
@@ -254,7 +262,7 @@ const RegulationsPage: React.FC = () => {
       setShapesText(cleared);
       setShapesDirty(false);
       updateEditorValue(shapesEditorRef, shapesSilentChange, cleared);
-    }, 'Validation shapes deleted', setShapesLoading);
+    }, 'Граф валидации удалён', setShapesLoading);
   };
 
   const isDataEmpty = dataText.trim().length === 0;
@@ -284,14 +292,18 @@ const RegulationsPage: React.FC = () => {
       <Row gutter={[16, 24]}>
         <Col xs={24} lg={12}>
           <Typography.Title level={4}>База регламентов</Typography.Title>
-          <Typography.Text strong>Regulations Data</Typography.Text>
-          <textarea ref={dataTextareaRef} defaultValue={dataText} style={{ display: 'none' }} aria-label="Regulations" />
           <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', marginTop: 8 }}>
-            <div style={{ minHeight: editorSize.height }} />
+            <textarea
+              ref={dataTextareaRef}
+              defaultValue={dataText}
+              style={{ display: 'none' }}
+              aria-label="Regulations"
+            />
+            <div ref={dataContainerRef} />
           </div>
           <Space style={{ marginTop: 12 }} wrap>
             <Button onClick={loadData} loading={dataLoading} disabled={dataLoading}>
-              Load
+              Загрузить
             </Button>
             <Button
               type="primary"
@@ -299,17 +311,17 @@ const RegulationsPage: React.FC = () => {
               disabled={dataLoading || isDataEmpty}
               loading={dataLoading}
             >
-              Create
+              Создать
             </Button>
             <Button
               onClick={handleUpdateData}
               disabled={dataLoading || isDataEmpty}
               loading={dataLoading}
             >
-              Update
+              Обновить
             </Button>
             <Button danger onClick={handleDeleteData} disabled={dataLoading} loading={dataLoading}>
-              Delete
+              Удалить
             </Button>
             {dataDirty && <Typography.Text type="warning">Есть несохранённые изменения</Typography.Text>}
           </Space>
@@ -317,19 +329,18 @@ const RegulationsPage: React.FC = () => {
 
         <Col xs={24} lg={12}>
           <Typography.Title level={4}>Граф валидации</Typography.Title>
-          <Typography.Text strong>Validation Shapes</Typography.Text>
-          <textarea
-            ref={shapesTextareaRef}
-            defaultValue={shapesText}
-            style={{ display: 'none' }}
-            aria-label="Validation Shapes"
-          />
           <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', marginTop: 8 }}>
-            <div style={{ minHeight: editorSize.height }} />
+            <textarea
+              ref={shapesTextareaRef}
+              defaultValue={shapesText}
+              style={{ display: 'none' }}
+              aria-label="Validation Shapes"
+            />
+            <div ref={shapesContainerRef} />
           </div>
           <Space style={{ marginTop: 12 }} wrap>
             <Button onClick={loadShapes} loading={shapesLoading} disabled={shapesLoading}>
-              Load
+              Загрузить
             </Button>
             <Button
               type="primary"
@@ -337,17 +348,17 @@ const RegulationsPage: React.FC = () => {
               disabled={shapesLoading || isShapesEmpty}
               loading={shapesLoading}
             >
-              Create
+              Создать
             </Button>
             <Button
               onClick={handleUpdateShapes}
               disabled={shapesLoading || isShapesEmpty}
               loading={shapesLoading}
             >
-              Update
+              Обновить
             </Button>
             <Button danger onClick={handleDeleteShapes} disabled={shapesLoading} loading={shapesLoading}>
-              Delete
+              Удалить
             </Button>
             {shapesDirty && <Typography.Text type="warning">Есть несохранённые изменения</Typography.Text>}
           </Space>
