@@ -28,3 +28,31 @@ body {
   color: #64748b;
   font-size: 14px;
 }
+
+.CodeMirror.cm-s-eclipse {
+  background: #fff;
+  line-height: 1.45;
+}
+
+.cm-owl-keyword {
+  color: #7c3aed;
+  font-weight: 700;
+}
+
+.cm-owl-entity {
+  color: #0ea5e9;
+  font-weight: 700;
+}
+
+.cm-owl-prefix {
+  color: #10b981;
+  font-weight: 700;
+}
+
+.cm-owl-iri {
+  color: #f97316;
+}
+
+.cm-owl-literal {
+  color: #312e81;
+}

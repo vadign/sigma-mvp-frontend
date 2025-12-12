@@ -1,173 +1,360 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Button, Col, Row, Space, Spin, Typography, message } from 'antd';
-import {
-  clearRegulationsData,
-  clearRegulationsShapes,
-  fetchRegulationsData,
-  fetchRegulationsShapes,
-  saveRegulationsData,
-  saveRegulationsShapes,
-} from '../api/client';
+import { Alert, Button, Col, Row, Space, Typography } from 'antd';
 import type { EditorFromTextArea } from 'codemirror';
 import CodeMirror from 'codemirror';
 import 'codemirror/lib/codemirror.css';
 import 'codemirror/theme/eclipse.css';
 import 'codemirror/mode/turtle/turtle';
+import 'codemirror/addon/mode/overlay';
+import {
+  clearRegulationsData,
+  clearRegulationsShapes,
+  createRegulationsData,
+  createRegulationsShapes,
+  fetchRegulationsData,
+  fetchRegulationsShapes,
+  updateRegulationsData,
+  updateRegulationsShapes,
+} from '../api/client';
 
-function RegulationsPage() {
+function ensureOwlTurtleMode() {
+  if ((CodeMirror as any).modes['turtle-owl-plus']) return;
+
+  const keywordRegex = /^(?:@prefix|@base|prefix|base)\b/i;
+  const entityRegex =
+    /^(?:Ontology|Class|ObjectProperty|DataProperty|DatatypeProperty|AnnotationProperty|NamedIndividual|Individual|Literal|Datatype|Namespace|Prefix)\b/;
+  const prefixRegex = /^[A-Za-z_][\w-]*:/;
+  const iriRegex = /^<[^>]+>/;
+  const literalRegex = /^"(?:[^"\\]|\\.)*"/;
+
+  (CodeMirror as any).defineMode('turtle-owl-plus', (config: any) => {
+    const baseMode = (CodeMirror as any).getMode(config, 'text/turtle');
+    const overlay = {
+      token(stream: any) {
+        if (stream.match(keywordRegex)) return 'owl-keyword';
+        if (stream.match(entityRegex)) return 'owl-entity';
+        if (stream.match(prefixRegex)) return 'owl-prefix';
+        if (stream.match(iriRegex)) return 'owl-iri';
+        if (stream.match(literalRegex)) return 'owl-literal';
+        while (stream.next() != null) {
+          if (stream.match(keywordRegex, false)) break;
+          if (stream.match(entityRegex, false)) break;
+          if (stream.match(prefixRegex, false)) break;
+          if (stream.match(iriRegex, false)) break;
+          if (stream.match(literalRegex, false)) break;
+        }
+        return null;
+      },
+    };
+
+    return (CodeMirror as any).overlayMode(baseMode, overlay);
+  });
+}
+
+const editorSize = { width: '100%', height: '720px' };
+
+const RegulationsPage: React.FC = () => {
   const [dataText, setDataText] = useState('');
   const [shapesText, setShapesText] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [dataDirty, setDataDirty] = useState(false);
+  const [shapesDirty, setShapesDirty] = useState(false);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [shapesLoading, setShapesLoading] = useState(false);
+  const [status, setStatus] = useState<null | { type: 'info' | 'success' | 'error'; text: string }>(null);
+
   const dataTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const shapesTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const dataEditorRef = useRef<EditorFromTextArea | null>(null);
   const shapesEditorRef = useRef<EditorFromTextArea | null>(null);
+  const dataSilentChange = useRef(false);
+  const shapesSilentChange = useRef(false);
 
   useEffect(() => {
-    setLoading(true);
-    Promise.all([fetchRegulationsData(), fetchRegulationsShapes()])
-      .then(([data, shapes]) => {
-        setDataText(data);
-        setShapesText(shapes);
-      })
-      .catch(() => message.error('Не удалось загрузить регламенты'))
-      .finally(() => setLoading(false));
+    ensureOwlTurtleMode();
   }, []);
 
   useEffect(() => {
-    if (loading) return;
     if (dataTextareaRef.current && !dataEditorRef.current) {
       const editor = CodeMirror.fromTextArea(dataTextareaRef.current, {
-        mode: 'text/turtle',
+        mode: 'turtle-owl-plus',
         theme: 'eclipse',
         lineNumbers: true,
         lineWrapping: true,
       });
+      editor.setSize(editorSize.width, editorSize.height);
       editor.on('change', (instance) => {
-        setDataText(instance.getValue());
+        const value = instance.getValue();
+        if (dataSilentChange.current) {
+          dataSilentChange.current = false;
+          setDataText(value);
+          return;
+        }
+        setDataText(value);
+        setDataDirty(true);
       });
-      editor.setSize('100%', '420px');
       dataEditorRef.current = editor;
+      setTimeout(() => editor.refresh(), 300);
     }
+
     if (shapesTextareaRef.current && !shapesEditorRef.current) {
       const editor = CodeMirror.fromTextArea(shapesTextareaRef.current, {
-        mode: 'text/turtle',
+        mode: 'turtle-owl-plus',
         theme: 'eclipse',
         lineNumbers: true,
         lineWrapping: true,
       });
+      editor.setSize(editorSize.width, editorSize.height);
       editor.on('change', (instance) => {
-        setShapesText(instance.getValue());
+        const value = instance.getValue();
+        if (shapesSilentChange.current) {
+          shapesSilentChange.current = false;
+          setShapesText(value);
+          return;
+        }
+        setShapesText(value);
+        setShapesDirty(true);
       });
-      editor.setSize('100%', '420px');
       shapesEditorRef.current = editor;
+      setTimeout(() => editor.refresh(), 300);
     }
-  }, [loading]);
 
-  useEffect(() => () => {
-    if (dataEditorRef.current) {
-      dataEditorRef.current.toTextArea();
-      dataEditorRef.current = null;
-    }
-    if (shapesEditorRef.current) {
-      shapesEditorRef.current.toTextArea();
-      shapesEditorRef.current = null;
-    }
+    const refreshEditors = () => {
+      if (dataEditorRef.current) dataEditorRef.current.refresh();
+      if (shapesEditorRef.current) shapesEditorRef.current.refresh();
+    };
+    window.addEventListener('resize', refreshEditors);
+    return () => {
+      window.removeEventListener('resize', refreshEditors);
+      if (dataEditorRef.current) {
+        dataEditorRef.current.toTextArea();
+        dataEditorRef.current = null;
+      }
+      if (shapesEditorRef.current) {
+        shapesEditorRef.current.toTextArea();
+        shapesEditorRef.current = null;
+      }
+    };
   }, []);
 
-  useEffect(() => {
-    if (dataEditorRef.current && dataEditorRef.current.getValue() !== dataText) {
-      dataEditorRef.current.setValue(dataText);
-    }
-  }, [dataText]);
-
-  useEffect(() => {
-    if (shapesEditorRef.current && shapesEditorRef.current.getValue() !== shapesText) {
-      shapesEditorRef.current.setValue(shapesText);
-    }
-  }, [shapesText]);
-
-  const save = async (type: 'data' | 'shapes') => {
-    try {
-      if (type === 'data') {
-        await saveRegulationsData(dataText);
-        message.success('Регламенты сохранены');
-      } else {
-        await saveRegulationsShapes(shapesText);
-        message.success('Граф валидации сохранён');
-      }
-    } catch (e) {
-      message.error('Не удалось сохранить');
+  const updateEditorValue = (
+    editorRef: React.MutableRefObject<EditorFromTextArea | null>,
+    silentFlag: React.MutableRefObject<boolean>,
+    value: string,
+  ) => {
+    if (editorRef.current) {
+      silentFlag.current = true;
+      editorRef.current.setValue(value);
     }
   };
 
-  const clear = async (type: 'data' | 'shapes') => {
+  const extractError = (error: unknown) => {
+    if (typeof error === 'string') return error;
+    if (error && typeof error === 'object' && 'response' in error) {
+      const err = error as any;
+      return err.response?.data || err.message || 'Ошибка запроса';
+    }
+    return 'Ошибка запроса';
+  };
+
+  const loadData = async () => {
+    setDataLoading(true);
+    setStatus({ type: 'info', text: 'Загружаем базу регламентов…' });
     try {
-      if (type === 'data') {
-        await clearRegulationsData();
-        setDataText('');
-      } else {
-        await clearRegulationsShapes();
-        setShapesText('');
-      }
-      message.success('Очищено');
-    } catch (e) {
-      message.error('Не удалось выполнить удаление');
+      const text = await fetchRegulationsData();
+      const normalized = typeof text === 'string' ? text : String(text ?? '');
+      setDataText(normalized);
+      setDataDirty(false);
+      updateEditorValue(dataEditorRef, dataSilentChange, normalized);
+      setStatus({ type: 'success', text: 'Regulations data loaded' });
+    } catch (error) {
+      setStatus({ type: 'error', text: extractError(error) });
+    } finally {
+      setDataLoading(false);
     }
   };
+
+  const loadShapes = async () => {
+    setShapesLoading(true);
+    setStatus({ type: 'info', text: 'Загружаем граф валидации…' });
+    try {
+      const text = await fetchRegulationsShapes();
+      const normalized = typeof text === 'string' ? text : String(text ?? '');
+      setShapesText(normalized);
+      setShapesDirty(false);
+      updateEditorValue(shapesEditorRef, shapesSilentChange, normalized);
+      setStatus({ type: 'success', text: 'Validation shapes loaded' });
+    } catch (error) {
+      setStatus({ type: 'error', text: extractError(error) });
+    } finally {
+      setShapesLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+    loadShapes();
+  }, []);
+
+  const runWithStatus = async (
+    action: () => Promise<any>,
+    successText: string,
+    loadingSetter: React.Dispatch<React.SetStateAction<boolean>>,
+  ) => {
+    loadingSetter(true);
+    try {
+      await action();
+      setStatus({ type: 'success', text: successText });
+    } catch (error) {
+      setStatus({ type: 'error', text: extractError(error) });
+    } finally {
+      loadingSetter(false);
+    }
+  };
+
+  const handleCreateData = () =>
+    runWithStatus(async () => {
+      await createRegulationsData(dataText);
+      setDataDirty(false);
+    }, 'Regulations created', setDataLoading);
+
+  const handleUpdateData = () =>
+    runWithStatus(async () => {
+      await updateRegulationsData(dataText);
+      setDataDirty(false);
+    }, 'Regulations updated', setDataLoading);
+
+  const handleDeleteData = () => {
+    if (!window.confirm('Удалить содержимое? Это действие необратимо')) return;
+    runWithStatus(async () => {
+      await clearRegulationsData();
+      const cleared = '';
+      setDataText(cleared);
+      setDataDirty(false);
+      updateEditorValue(dataEditorRef, dataSilentChange, cleared);
+    }, 'Regulations deleted', setDataLoading);
+  };
+
+  const handleCreateShapes = () =>
+    runWithStatus(async () => {
+      await createRegulationsShapes(shapesText);
+      setShapesDirty(false);
+    }, 'Validation shapes created', setShapesLoading);
+
+  const handleUpdateShapes = () =>
+    runWithStatus(async () => {
+      await updateRegulationsShapes(shapesText);
+      setShapesDirty(false);
+    }, 'Validation shapes updated', setShapesLoading);
+
+  const handleDeleteShapes = () => {
+    if (!window.confirm('Удалить содержимое? Это действие необратимо')) return;
+    runWithStatus(async () => {
+      await clearRegulationsShapes();
+      const cleared = '';
+      setShapesText(cleared);
+      setShapesDirty(false);
+      updateEditorValue(shapesEditorRef, shapesSilentChange, cleared);
+    }, 'Validation shapes deleted', setShapesLoading);
+  };
+
+  const isDataEmpty = dataText.trim().length === 0;
+  const isShapesEmpty = shapesText.trim().length === 0;
 
   return (
     <div>
-      <Typography.Title level={3}>Регламенты</Typography.Title>
-      <Typography.Paragraph>
-        Регламенты задают пороги и правила, по которым определяется уровень критичности и выдаются рекомендации.
+      <Typography.Title level={2}>Цифровые регламенты</Typography.Title>
+      <Typography.Paragraph type="secondary">
+        Правила определяют критичность и формируют рекомендации. Граф валидации задаёт ограничения и проверки структуры
+        данных.
       </Typography.Paragraph>
       <Typography.Paragraph className="helper-text" style={{ marginBottom: 16 }}>
-        Когда параметр сети выходит за пределы, Сигма выбирает подходящий регламент, присваивает уровень критичности
-        и предлагает рекомендацию к действиям диспетчеру.
+        Регламенты задают пороги и условия, по которым система формирует уровни критичности и рекомендации. Граф
+        валидации описывает проверки полноты и корректности данных для подсистем города.
       </Typography.Paragraph>
-      {loading ? (
-        <Spin />
-      ) : (
-        <Row gutter={16}>
-          <Col span={12}>
-            <Typography.Title level={5}>База регламентов</Typography.Title>
-            <textarea
-              ref={dataTextareaRef}
-              defaultValue={dataText}
-              style={{ display: 'none' }}
-              aria-label="Текст регламентов"
-            />
-            <Space style={{ marginTop: 8 }}>
-              <Button type="primary" onClick={() => save('data')}>
-                Сохранить регламенты
-              </Button>
-              <Button danger onClick={() => clear('data')}>
-                Очистить регламенты
-              </Button>
-            </Space>
-          </Col>
-          <Col span={12}>
-            <Typography.Title level={5}>Граф валидации (shapes)</Typography.Title>
-            <textarea
-              ref={shapesTextareaRef}
-              defaultValue={shapesText}
-              style={{ display: 'none' }}
-              aria-label="Граф валидации"
-            />
-            <Space style={{ marginTop: 8 }}>
-              <Button type="primary" onClick={() => save('shapes')}>
-                Сохранить граф валидации
-              </Button>
-              <Button danger onClick={() => clear('shapes')}>
-                Очистить граф валидации
-              </Button>
-            </Space>
-          </Col>
-        </Row>
+
+      {status && (
+        <Alert
+          style={{ marginBottom: 16 }}
+          message={status.text}
+          type={status.type}
+          showIcon
+        />
       )}
+
+      <Row gutter={[16, 24]}>
+        <Col xs={24} lg={12}>
+          <Typography.Title level={4}>База регламентов</Typography.Title>
+          <Typography.Text strong>Regulations Data</Typography.Text>
+          <textarea ref={dataTextareaRef} defaultValue={dataText} style={{ display: 'none' }} aria-label="Regulations" />
+          <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', marginTop: 8 }}>
+            <div style={{ minHeight: editorSize.height }} />
+          </div>
+          <Space style={{ marginTop: 12 }} wrap>
+            <Button onClick={loadData} loading={dataLoading} disabled={dataLoading}>
+              Load
+            </Button>
+            <Button
+              type="primary"
+              onClick={handleCreateData}
+              disabled={dataLoading || isDataEmpty}
+              loading={dataLoading}
+            >
+              Create
+            </Button>
+            <Button
+              onClick={handleUpdateData}
+              disabled={dataLoading || isDataEmpty}
+              loading={dataLoading}
+            >
+              Update
+            </Button>
+            <Button danger onClick={handleDeleteData} disabled={dataLoading} loading={dataLoading}>
+              Delete
+            </Button>
+            {dataDirty && <Typography.Text type="warning">Есть несохранённые изменения</Typography.Text>}
+          </Space>
+        </Col>
+
+        <Col xs={24} lg={12}>
+          <Typography.Title level={4}>Граф валидации</Typography.Title>
+          <Typography.Text strong>Validation Shapes</Typography.Text>
+          <textarea
+            ref={shapesTextareaRef}
+            defaultValue={shapesText}
+            style={{ display: 'none' }}
+            aria-label="Validation Shapes"
+          />
+          <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', marginTop: 8 }}>
+            <div style={{ minHeight: editorSize.height }} />
+          </div>
+          <Space style={{ marginTop: 12 }} wrap>
+            <Button onClick={loadShapes} loading={shapesLoading} disabled={shapesLoading}>
+              Load
+            </Button>
+            <Button
+              type="primary"
+              onClick={handleCreateShapes}
+              disabled={shapesLoading || isShapesEmpty}
+              loading={shapesLoading}
+            >
+              Create
+            </Button>
+            <Button
+              onClick={handleUpdateShapes}
+              disabled={shapesLoading || isShapesEmpty}
+              loading={shapesLoading}
+            >
+              Update
+            </Button>
+            <Button danger onClick={handleDeleteShapes} disabled={shapesLoading} loading={shapesLoading}>
+              Delete
+            </Button>
+            {shapesDirty && <Typography.Text type="warning">Есть несохранённые изменения</Typography.Text>}
+          </Space>
+        </Col>
+      </Row>
     </div>
   );
-}
+};
 
 export default RegulationsPage;

@@ -57,8 +57,26 @@ export const fetchRegulationsShapes = async (): Promise<string> => {
   return data;
 };
 
-export const saveRegulationsData = (body: string) => api.put('/api/v1/regulations/data', body);
-export const saveRegulationsShapes = (body: string) => api.put('/api/v1/regulations/shapes', body);
+export const createRegulationsData = (body: string) =>
+  api.post('/api/v1/regulations/data', body, {
+    headers: { 'Content-Type': 'text/plain' },
+  });
+
+export const createRegulationsShapes = (body: string) =>
+  api.post('/api/v1/regulations/shapes', body, {
+    headers: { 'Content-Type': 'text/plain' },
+  });
+
+export const updateRegulationsData = (body: string) =>
+  api.put('/api/v1/regulations/data', body, {
+    headers: { 'Content-Type': 'text/plain' },
+  });
+
+export const updateRegulationsShapes = (body: string) =>
+  api.put('/api/v1/regulations/shapes', body, {
+    headers: { 'Content-Type': 'text/plain' },
+  });
+
 export const clearRegulationsData = () => api.delete('/api/v1/regulations/data');
 export const clearRegulationsShapes = () => api.delete('/api/v1/regulations/shapes');
 
