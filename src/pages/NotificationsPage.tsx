@@ -110,9 +110,6 @@ function NotificationsPage() {
     [networks],
   );
 
-  const exampleEvent =
-    subscriptions.find((s) => s.level === 3) || subscriptions[0];
-
   return (
     <div>
       <Typography.Title level={3}>Уведомления и подписки</Typography.Title>
@@ -250,25 +247,19 @@ function NotificationsPage() {
         </Col>
       </Row>
 
-      <Row gutter={16} className="page-section">
-        <Col span={12}>
-          <Card title="Пример email-уведомления">
-            <Typography.Title level={5}>
-              [Сигма] Критическое событие в подсистеме {exampleEvent?.network_id || 'теплосети'}
-            </Typography.Title>
-            <Typography.Paragraph>
-              Уровень: {exampleEvent?.level || 3}. Рекомендуем открыть дашборд для деталей и действий.
-            </Typography.Paragraph>
-          </Card>
-        </Col>
-        <Col span={12}>
+      <Row className="page-section">
+        <Col span={24}>
           <Card
-            title="Пример сообщения в Telegram"
-            extra={<Button onClick={clearTelegramSubscriptions}>Очистить Telegram-подписки</Button>}
+            title="Очистить Telegram-подписки"
+            extra={
+              <Button danger onClick={clearTelegramSubscriptions}>
+                Очистить все подписки
+              </Button>
+            }
           >
             <Typography.Paragraph>
-              Сигма: новое критическое событие. Уровень: 3. Рекомендованное действие: проверить насосную
-              станцию и уведомить диспетчера.
+              Удалите все Telegram-подписки одним нажатием, если нужна чистая демонстрация без прежних
+              получателей.
             </Typography.Paragraph>
           </Card>
         </Col>
