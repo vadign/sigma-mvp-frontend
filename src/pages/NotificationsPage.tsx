@@ -15,7 +15,6 @@ import {
 import dayjs from 'dayjs';
 import LevelTag from '../components/LevelTag';
 import {
-  clearTelegramSubscriptions,
   createSubscription,
   createUser,
   deleteSubscription,
@@ -247,23 +246,6 @@ function NotificationsPage() {
         </Col>
       </Row>
 
-      <Row className="page-section">
-        <Col span={24}>
-          <Card
-            title="Очистить Telegram-подписки"
-            extra={
-              <Button danger onClick={clearTelegramSubscriptions}>
-                Очистить все подписки
-              </Button>
-            }
-          >
-            <Typography.Paragraph>
-              Удалите все Telegram-подписки одним нажатием, если нужна чистая демонстрация без прежних
-              получателей.
-            </Typography.Paragraph>
-          </Card>
-        </Col>
-      </Row>
     </div>
   );
 }
