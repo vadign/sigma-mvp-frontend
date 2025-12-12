@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Button, Col, Row, Space, Spin, Typography, message } from 'antd';
 import {
   clearRegulationsData,
@@ -8,21 +8,20 @@ import {
   saveRegulationsData,
   saveRegulationsShapes,
 } from '../api/client';
-import CodeEditor from '@uiw/react-textarea-code-editor';
-import 'prismjs/themes/prism.css';
-import '@uiw/react-textarea-code-editor/dist.css';
-
-const editorStyle: React.CSSProperties = {
-  fontFamily: 'Menlo, Monaco, Consolas, "Courier New", monospace',
-  minHeight: 360,
-  borderRadius: 8,
-  padding: 12,
-};
+import type { EditorFromTextArea } from 'codemirror';
+import CodeMirror from 'codemirror';
+import 'codemirror/lib/codemirror.css';
+import 'codemirror/theme/eclipse.css';
+import 'codemirror/mode/turtle/turtle';
 
 function RegulationsPage() {
   const [dataText, setDataText] = useState('');
   const [shapesText, setShapesText] = useState('');
   const [loading, setLoading] = useState(false);
+  const dataTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const shapesTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const dataEditorRef = useRef<EditorFromTextArea | null>(null);
+  const shapesEditorRef = useRef<EditorFromTextArea | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -34,6 +33,57 @@ function RegulationsPage() {
       .catch(() => message.error('Не удалось загрузить регламенты'))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (dataTextareaRef.current && !dataEditorRef.current) {
+      const editor = CodeMirror.fromTextArea(dataTextareaRef.current, {
+        mode: 'text/turtle',
+        theme: 'eclipse',
+        lineNumbers: true,
+        lineWrapping: true,
+      });
+      editor.on('change', (instance) => {
+        setDataText(instance.getValue());
+      });
+      editor.setSize('100%', '420px');
+      dataEditorRef.current = editor;
+    }
+    if (shapesTextareaRef.current && !shapesEditorRef.current) {
+      const editor = CodeMirror.fromTextArea(shapesTextareaRef.current, {
+        mode: 'text/turtle',
+        theme: 'eclipse',
+        lineNumbers: true,
+        lineWrapping: true,
+      });
+      editor.on('change', (instance) => {
+        setShapesText(instance.getValue());
+      });
+      editor.setSize('100%', '420px');
+      shapesEditorRef.current = editor;
+    }
+    return () => {
+      if (dataEditorRef.current) {
+        dataEditorRef.current.toTextArea();
+        dataEditorRef.current = null;
+      }
+      if (shapesEditorRef.current) {
+        shapesEditorRef.current.toTextArea();
+        shapesEditorRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (dataEditorRef.current && dataEditorRef.current.getValue() !== dataText) {
+      dataEditorRef.current.setValue(dataText);
+    }
+  }, [dataText]);
+
+  useEffect(() => {
+    if (shapesEditorRef.current && shapesEditorRef.current.getValue() !== shapesText) {
+      shapesEditorRef.current.setValue(shapesText);
+    }
+  }, [shapesText]);
 
   const save = async (type: 'data' | 'shapes') => {
     try {
@@ -64,8 +114,6 @@ function RegulationsPage() {
     }
   };
 
-  const memoizedStyle = useMemo(() => ({ ...editorStyle }), []);
-
   return (
     <div>
       <Typography.Title level={3}>Регламенты</Typography.Title>
@@ -82,13 +130,11 @@ function RegulationsPage() {
         <Row gutter={16}>
           <Col span={12}>
             <Typography.Title level={5}>База регламентов</Typography.Title>
-            <CodeEditor
-              value={dataText}
-              language="turtle"
-              placeholder="Вставьте содержимое базы регламентов"
-              onChange={(event) => setDataText(event.target.value)}
-              padding={12}
-              style={memoizedStyle}
+            <textarea
+              ref={dataTextareaRef}
+              defaultValue={dataText}
+              style={{ display: 'none' }}
+              aria-label="Текст регламентов"
             />
             <Space style={{ marginTop: 8 }}>
               <Button type="primary" onClick={() => save('data')}>
@@ -101,13 +147,11 @@ function RegulationsPage() {
           </Col>
           <Col span={12}>
             <Typography.Title level={5}>Граф валидации (shapes)</Typography.Title>
-            <CodeEditor
-              value={shapesText}
-              language="turtle"
-              placeholder="Вставьте граф валидации (shapes)"
-              onChange={(event) => setShapesText(event.target.value)}
-              padding={12}
-              style={memoizedStyle}
+            <textarea
+              ref={shapesTextareaRef}
+              defaultValue={shapesText}
+              style={{ display: 'none' }}
+              aria-label="Граф валидации"
             />
             <Space style={{ marginTop: 8 }}>
               <Button type="primary" onClick={() => save('shapes')}>
