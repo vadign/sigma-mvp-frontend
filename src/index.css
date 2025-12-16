@@ -1,0 +1,58 @@
+:root {
+  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
+  color: #0f172a;
+  background-color: #f5f7fb;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #f5f7fb;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.page-section {
+  margin-top: 24px;
+}
+
+.section-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.helper-text {
+  color: #64748b;
+  font-size: 14px;
+}
+
+.CodeMirror.cm-s-eclipse {
+  background: #fff;
+  line-height: 1.45;
+}
+
+.cm-owl-keyword {
+  color: #7c3aed;
+  font-weight: 700;
+}
+
+.cm-owl-entity {
+  color: #0ea5e9;
+  font-weight: 700;
+}
+
+.cm-owl-prefix {
+  color: #10b981;
+  font-weight: 700;
+}
+
+.cm-owl-iri {
+  color: #f97316;
+}
+
+.cm-owl-literal {
+  color: #312e81;
+}
