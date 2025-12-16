@@ -1,20 +1,13 @@
 import { Tag } from 'antd';
+import { getSeverityMeta, SeverityLevel } from '../utils/severity';
 
 interface Props {
-  level: number | null | undefined;
+  level: SeverityLevel | number;
 }
 
-const levelColor: Record<number, string> = {
-  1: 'gold',
-  2: 'orange',
-  3: 'red',
-};
-
 function LevelTag({ level }: Props) {
-  if (!level) {
-    return <Tag>нет данных</Tag>;
-  }
-  return <Tag color={levelColor[level]}>Уровень {level}</Tag>;
+  const meta = getSeverityMeta(level as SeverityLevel);
+  return <Tag color={meta.color}>{meta.tagText}</Tag>;
 }
 
 export default LevelTag;

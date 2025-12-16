@@ -43,7 +43,7 @@ function IntroPage() {
                 headStyle={{ fontSize: 18, fontWeight: 600 }}
                 bodyStyle={{ minHeight: 260 }}
               >
-                <div style={{ height: 48, marginBottom: 12, background: '#f5f5f5', borderRadius: 8 }} />
+                <div style={{ height: 32, marginBottom: 8 }} />
                 <Text strong style={{ display: 'block', marginBottom: 8 }}>
                   Единый взгляд на события и инциденты в городской среде
                 </Text>
@@ -63,7 +63,7 @@ function IntroPage() {
                 headStyle={{ fontSize: 18, fontWeight: 600 }}
                 bodyStyle={{ minHeight: 260 }}
               >
-                <div style={{ height: 48, marginBottom: 12, background: '#f5f5f5', borderRadius: 8 }} />
+                <div style={{ height: 32, marginBottom: 8 }} />
                 <Text strong style={{ display: 'block', marginBottom: 8 }}>
                   Рекомендации по действию на основе цифровых регламентов
                 </Text>
@@ -83,7 +83,7 @@ function IntroPage() {
                 headStyle={{ fontSize: 18, fontWeight: 600 }}
                 bodyStyle={{ minHeight: 260 }}
               >
-                <div style={{ height: 48, marginBottom: 12, background: '#f5f5f5', borderRadius: 8 }} />
+                <div style={{ height: 32, marginBottom: 8 }} />
                 <Text strong style={{ display: 'block', marginBottom: 8 }}>
                   Переход от реакции на проблемы к их предупреждению
                 </Text>

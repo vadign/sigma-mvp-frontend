@@ -21,7 +21,7 @@ const { Header, Content } = Layout;
 
 const tabs = [
   { key: 'intro', label: 'Вступление', icon: <InfoCircleOutlined /> },
-  { key: 'topology', label: 'Данные и топология', icon: <ApartmentOutlined /> },
+  { key: 'topology', label: 'Топология и отклонения', icon: <ApartmentOutlined /> },
   { key: 'regulations', label: 'Регламенты', icon: <FileProtectOutlined /> },
   { key: 'mayor', label: 'Дашборд мэра', icon: <CrownOutlined /> },
   { key: 'operator', label: 'Дашборд оператора', icon: <DashboardOutlined /> },
