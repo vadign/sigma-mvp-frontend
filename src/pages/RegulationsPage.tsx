@@ -61,6 +61,8 @@ const RegulationsPage: React.FC = () => {
   const [dataLoading, setDataLoading] = useState(false);
   const [shapesLoading, setShapesLoading] = useState(false);
   const [status, setStatus] = useState<null | { type: 'info' | 'success' | 'error'; text: string }>(null);
+  const [dataExists, setDataExists] = useState(false);
+  const [shapesExists, setShapesExists] = useState(false);
 
   const dataTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const shapesTextareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -151,8 +153,16 @@ const RegulationsPage: React.FC = () => {
     if (typeof error === 'string') return error;
     if (error && typeof error === 'object' && 'response' in error) {
       const err = error as any;
-      return err.response?.data || err.message || 'Ошибка запроса';
+      const { status, data } = err.response || {};
+      const isValidation = status === 400 || status === 422;
+      let detail = '';
+      if (typeof data === 'string') detail = data;
+      else if (data && typeof data === 'object') detail = JSON.stringify(data, null, 2);
+      else if (err.message) detail = err.message;
+      const prefix = isValidation ? 'Ошибка валидации' : 'Ошибка запроса';
+      return detail ? `${prefix}: ${detail}` : `${prefix}${status ? ` (статус ${status})` : ''}`;
     }
+    if ((error as any)?.message) return (error as any).message;
     return 'Ошибка запроса';
   };
 
@@ -164,10 +174,12 @@ const RegulationsPage: React.FC = () => {
       const normalized = typeof text === 'string' ? text : String(text ?? '');
       setDataText(normalized);
       setDataDirty(false);
+      setDataExists(normalized.trim().length > 0);
       updateEditorValue(dataEditorRef, dataSilentChange, normalized);
       setStatus({ type: 'success', text: 'База регламентов загружена' });
     } catch (error) {
       setStatus({ type: 'error', text: extractError(error) });
+      setDataExists(false);
     } finally {
       setDataLoading(false);
     }
@@ -181,10 +193,12 @@ const RegulationsPage: React.FC = () => {
       const normalized = typeof text === 'string' ? text : String(text ?? '');
       setShapesText(normalized);
       setShapesDirty(false);
+      setShapesExists(normalized.trim().length > 0);
       updateEditorValue(shapesEditorRef, shapesSilentChange, normalized);
       setStatus({ type: 'success', text: 'Граф валидации загружен' });
     } catch (error) {
       setStatus({ type: 'error', text: extractError(error) });
+      setShapesExists(false);
     } finally {
       setShapesLoading(false);
     }
@@ -215,12 +229,14 @@ const RegulationsPage: React.FC = () => {
     runWithStatus(async () => {
       await createRegulationsData(dataText);
       setDataDirty(false);
+      setDataExists(true);
     }, 'База регламентов создана', setDataLoading);
 
   const handleUpdateData = () =>
     runWithStatus(async () => {
       await updateRegulationsData(dataText);
       setDataDirty(false);
+      setDataExists(true);
     }, 'База регламентов обновлена', setDataLoading);
 
   const handleDeleteData = () => {
@@ -230,6 +246,7 @@ const RegulationsPage: React.FC = () => {
       const cleared = '';
       setDataText(cleared);
       setDataDirty(false);
+      setDataExists(false);
       updateEditorValue(dataEditorRef, dataSilentChange, cleared);
     }, 'База регламентов удалена', setDataLoading);
   };
@@ -238,12 +255,14 @@ const RegulationsPage: React.FC = () => {
     runWithStatus(async () => {
       await createRegulationsShapes(shapesText);
       setShapesDirty(false);
+      setShapesExists(true);
     }, 'Граф валидации создан', setShapesLoading);
 
   const handleUpdateShapes = () =>
     runWithStatus(async () => {
       await updateRegulationsShapes(shapesText);
       setShapesDirty(false);
+      setShapesExists(true);
     }, 'Граф валидации обновлён', setShapesLoading);
 
   const handleDeleteShapes = () => {
@@ -253,6 +272,7 @@ const RegulationsPage: React.FC = () => {
       const cleared = '';
       setShapesText(cleared);
       setShapesDirty(false);
+      setShapesExists(false);
       updateEditorValue(shapesEditorRef, shapesSilentChange, cleared);
     }, 'Граф валидации удалён', setShapesLoading);
   };
@@ -293,25 +313,25 @@ const RegulationsPage: React.FC = () => {
             />
           </div>
           <Space style={{ marginTop: 12 }} wrap>
-            <Button onClick={loadData} loading={dataLoading} disabled={dataLoading}>
+            <Button onClick={loadData} loading={dataLoading} disabled={dataLoading || dataExists}>
               Загрузить
             </Button>
             <Button
               type="primary"
               onClick={handleCreateData}
-              disabled={dataLoading || isDataEmpty}
+              disabled={dataLoading || isDataEmpty || dataExists}
               loading={dataLoading}
             >
               Создать
             </Button>
             <Button
               onClick={handleUpdateData}
-              disabled={dataLoading || isDataEmpty}
+              disabled={dataLoading || !dataExists || isDataEmpty || !dataDirty}
               loading={dataLoading}
             >
               Обновить
             </Button>
-            <Button danger onClick={handleDeleteData} disabled={dataLoading} loading={dataLoading}>
+            <Button danger onClick={handleDeleteData} disabled={dataLoading || !dataExists} loading={dataLoading}>
               Удалить
             </Button>
             {dataDirty && <Typography.Text type="warning">Есть несохранённые изменения</Typography.Text>}
@@ -329,25 +349,25 @@ const RegulationsPage: React.FC = () => {
             />
           </div>
           <Space style={{ marginTop: 12 }} wrap>
-            <Button onClick={loadShapes} loading={shapesLoading} disabled={shapesLoading}>
+            <Button onClick={loadShapes} loading={shapesLoading} disabled={shapesLoading || shapesExists}>
               Загрузить
             </Button>
             <Button
               type="primary"
               onClick={handleCreateShapes}
-              disabled={shapesLoading || isShapesEmpty}
+              disabled={shapesLoading || isShapesEmpty || shapesExists}
               loading={shapesLoading}
             >
               Создать
             </Button>
             <Button
               onClick={handleUpdateShapes}
-              disabled={shapesLoading || isShapesEmpty}
+              disabled={shapesLoading || !shapesExists || isShapesEmpty || !shapesDirty}
               loading={shapesLoading}
             >
               Обновить
             </Button>
-            <Button danger onClick={handleDeleteShapes} disabled={shapesLoading} loading={shapesLoading}>
+            <Button danger onClick={handleDeleteShapes} disabled={shapesLoading || !shapesExists} loading={shapesLoading}>
               Удалить
             </Button>
             {shapesDirty && <Typography.Text type="warning">Есть несохранённые изменения</Typography.Text>}

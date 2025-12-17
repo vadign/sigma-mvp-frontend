@@ -9,6 +9,7 @@ import {
   Select,
   Space,
   Table,
+  Modal,
   Typography,
   message,
 } from 'antd';
@@ -18,12 +19,15 @@ import {
   createSubscription,
   createUser,
   deleteSubscription,
+  deleteUser,
   fetchNetworks,
   fetchSubscriptions,
   fetchUsers,
   updateSubscription,
+  updateUser,
 } from '../api/client';
 import { EmailSubscriptionResponse, NetworkResponse, UserResponse } from '../api/types';
+import { getSeverityMeta } from '../utils/severity';
 
 function NotificationsPage() {
   const [users, setUsers] = useState<UserResponse[]>([]);
@@ -32,6 +36,8 @@ function NotificationsPage() {
   const [subscriptions, setSubscriptions] = useState<EmailSubscriptionResponse[]>([]);
   const [loadingSubs, setLoadingSubs] = useState(false);
   const [creatingUser, setCreatingUser] = useState(false);
+  const [editingUser, setEditingUser] = useState<UserResponse | null>(null);
+  const [editingSub, setEditingSub] = useState<EmailSubscriptionResponse | null>(null);
 
   const loadUsers = () => {
     fetchUsers()
@@ -59,6 +65,7 @@ function NotificationsPage() {
       await createUser(values.name, values.email);
       message.success('Пользователь создан');
       loadUsers();
+      setSelectedUser(null);
     } catch (e) {
       message.error('Не удалось создать пользователя');
     } finally {
@@ -92,6 +99,7 @@ function NotificationsPage() {
       message.success('Подписка обновлена');
       const list = await fetchSubscriptions(selectedUser.id);
       setSubscriptions(list);
+      setEditingSub(null);
     } catch (e) {
       message.error('Не удалось обновить подписку');
     }
@@ -104,12 +112,48 @@ function NotificationsPage() {
     setSubscriptions(await fetchSubscriptions(selectedUser.id));
   };
 
+  const onUpdateUser = async (userId: string, values: { name?: string; email?: string }) => {
+    try {
+      await updateUser(userId, { name: values.name, email: values.email });
+      message.success('Пользователь обновлён');
+      const refreshed = await fetchUsers();
+      setUsers(refreshed);
+      const updated = refreshed.find((u) => u.id === userId) || null;
+      setSelectedUser(updated);
+      setEditingUser(null);
+    } catch (e) {
+      message.error('Не удалось обновить пользователя');
+    }
+  };
+
+  const onDeleteUser = async (userId: string) => {
+    try {
+      await deleteUser(userId);
+      message.success('Пользователь удалён');
+      const refreshed = await fetchUsers();
+      setUsers(refreshed);
+      if (selectedUser?.id === userId) {
+        setSelectedUser(null);
+        setSubscriptions([]);
+      }
+    } catch (e) {
+      message.error('Не удалось удалить пользователя');
+    }
+  };
+
   const networkName = useMemo(
     () => Object.fromEntries(networks.map((n) => [n.id, n.name])),
     [networks],
   );
 
+  const subjectLabel = (subj: string) => (subj === 'deviations' ? 'Отклонения' : subj === 'events' ? 'События' : subj);
+  const severityOptions = [1, 2, 3].map((lvl) => {
+    const meta = getSeverityMeta(lvl as 1 | 2 | 3);
+    return { value: lvl, label: meta.tagText };
+  });
+
   return (
+    <>
     <div>
       <Typography.Title level={3}>Уведомления и подписки</Typography.Title>
       <Row gutter={16}>
@@ -125,6 +169,19 @@ function NotificationsPage() {
                   title: 'Создан',
                   dataIndex: 'created_at',
                   render: (value: string) => dayjs(value).format('DD.MM.YYYY'),
+                },
+                {
+                  title: 'Действия',
+                  render: (_, record) => (
+                    <Space>
+                      <Button size="small" onClick={() => setEditingUser(record)}>
+                        Редактировать
+                      </Button>
+                      <Button size="small" danger onClick={() => onDeleteUser(record.id)}>
+                        Удалить
+                      </Button>
+                    </Space>
+                  ),
                 },
               ]}
               onRow={(record) => ({
@@ -162,7 +219,11 @@ function NotificationsPage() {
                   pagination={false}
                   columns={[
                     { title: 'Сеть', dataIndex: 'network_id', render: (id: string) => networkName[id] || id },
-                    { title: 'Тип', dataIndex: 'subject' },
+                    {
+                      title: 'Тип',
+                      dataIndex: 'subject',
+                      render: (value: string) => subjectLabel(value),
+                    },
                     {
                       title: 'Уровень',
                       dataIndex: 'level',
@@ -179,14 +240,9 @@ function NotificationsPage() {
                         <Space>
                           <Button
                             size="small"
-                            onClick={() =>
-                              onUpdateSubscription(record, {
-                                level: record.level,
-                                subject: record.subject,
-                              })
-                            }
+                            onClick={() => setEditingSub(record)}
                           >
-                            Обновить
+                            Редактировать
                           </Button>
                           <Button size="small" danger onClick={() => onDeleteSubscription(record)}>
                             Удалить
@@ -212,11 +268,7 @@ function NotificationsPage() {
                       rules={[{ required: true, message: 'Укажите уровень' }]}
                     >
                       <Select
-                        options={[
-                          { value: 1, label: '1' },
-                          { value: 2, label: '2' },
-                          { value: 3, label: '3' },
-                        ]}
+                        options={severityOptions}
                       />
                     </Form.Item>
                     <Form.Item
@@ -247,6 +299,81 @@ function NotificationsPage() {
       </Row>
 
     </div>
+    <Modal
+      title="Редактировать пользователя"
+      open={Boolean(editingUser)}
+      onCancel={() => setEditingUser(null)}
+      footer={null}
+      destroyOnClose
+    >
+      {editingUser && (
+        <Form
+          layout="vertical"
+          initialValues={{ name: editingUser.name, email: editingUser.email }}
+          onFinish={(values) => onUpdateUser(editingUser.id, values)}
+        >
+          <Form.Item name="name" label="Имя" rules={[{ required: true, message: 'Укажите имя' }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item
+            name="email"
+            label="Email"
+            rules={[{ required: true, message: 'Укажите email' }]}
+          >
+            <Input />
+          </Form.Item>
+          <Space>
+            <Button onClick={() => setEditingUser(null)}>Отмена</Button>
+            <Button type="primary" htmlType="submit">
+              Сохранить
+            </Button>
+          </Space>
+        </Form>
+      )}
+    </Modal>
+
+    <Modal
+      title="Редактировать подписку"
+      open={Boolean(editingSub)}
+      onCancel={() => setEditingSub(null)}
+      footer={null}
+      destroyOnClose
+    >
+      {editingSub && (
+        <Form
+          layout="vertical"
+          initialValues={{ level: editingSub.level, subject: editingSub.subject }}
+          onFinish={(values) => onUpdateSubscription(editingSub, values)}
+        >
+          <Form.Item
+            name="level"
+            label="Уровень критичности"
+            rules={[{ required: true, message: 'Укажите уровень' }]}
+          >
+            <Select options={severityOptions} />
+          </Form.Item>
+          <Form.Item
+            name="subject"
+            label="Тип подписки"
+            rules={[{ required: true, message: 'Укажите тип' }]}
+          >
+            <Select
+              options={[
+                { value: 'deviations', label: 'Отклонения' },
+                { value: 'events', label: 'События' },
+              ]}
+            />
+          </Form.Item>
+          <Space>
+            <Button onClick={() => setEditingSub(null)}>Отмена</Button>
+            <Button type="primary" htmlType="submit">
+              Сохранить
+            </Button>
+          </Space>
+        </Form>
+      )}
+    </Modal>
+    </>
   );
 }
 

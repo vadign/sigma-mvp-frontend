@@ -11,6 +11,7 @@ import {
   Tag,
   Typography,
   message,
+  Segmented,
 } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
 import LevelTag from '../components/LevelTag';
@@ -22,6 +23,7 @@ import {
   fetchTopology,
 } from '../api/client';
 import { DeviationGetResponse, EventResponse, NetworkResponse, TopologyGetResponse } from '../api/types';
+import { getSeverityMeta } from '../utils/severity';
 
 const { RangePicker } = DatePicker;
 
@@ -46,6 +48,7 @@ function MayorDashboardPage() {
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null]>([null, null]);
   const [level, setLevel] = useState<1 | 2 | 3 | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const [viewMode, setViewMode] = useState<'deviations' | 'events'>('deviations');
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<any>(null);
@@ -75,12 +78,13 @@ function MayorDashboardPage() {
   }, []);
 
   useEffect(() => {
+    if (viewMode !== 'events') return;
     setLoading(true);
     fetchEvents({ limit: 100, order: 'desc', level: level ?? undefined })
       .then(setEvents)
       .catch(() => message.error('Ошибка загрузки событий'))
       .finally(() => setLoading(false));
-  }, [level]);
+  }, [level, viewMode]);
 
   useEffect(() => {
     const loadTopologyAndDeviations = async () => {
@@ -104,10 +108,10 @@ function MayorDashboardPage() {
   }, [selectedNetwork]);
 
   useEffect(() => {
-    if (!mapReady || !topology) return;
-    const hotEdgeSet = new Set(deviations.filter((d) => d.level === 3).map((d) => d.edge_id));
+    if (!mapReady || !topology || viewMode !== 'deviations') return;
+    const hotEdgeSet = new Set(deviations.filter((d) => d.level === 1).map((d) => d.edge_id));
     renderTopologyOnMap(topology, hotEdgeSet);
-  }, [mapReady, topology, deviations]);
+  }, [mapReady, topology, deviations, viewMode]);
 
   const renderTopologyOnMap = (data: TopologyGetResponse, hotEdges: Set<number>) => {
     if (!mapContainerRef.current) return;
@@ -145,6 +149,7 @@ function MayorDashboardPage() {
           strokeColor: isHot ? '#ff4d4f' : '#4a90e2',
           strokeWidth: isHot ? 5 : 3,
           strokeOpacity: isHot ? 0.9 : 0.7,
+          hintContent: `Ребро ${edge.id}`,
         },
       );
       edgeObjects.add(line);
@@ -160,7 +165,7 @@ function MayorDashboardPage() {
       const placemark = new ymaps.Placemark(
         coords,
         {
-          balloonContent: `Узел ${node.id}<br/>WTK_x: ${node.WTK_x}<br/>WTK_y: ${node.WTK_y}`,
+          balloonContent: `УЗ-${node.id}`,
         },
         {
           preset: 'islands#circleIcon',
@@ -192,7 +197,7 @@ function MayorDashboardPage() {
     });
   }, [events, dateRange]);
 
-  const counts = useMemo(() => {
+  const eventCounts = useMemo(() => {
     const total = filteredEvents.length;
     const levelCounts = { 1: 0, 2: 0, 3: 0 } as Record<1 | 2 | 3, number>;
     filteredEvents.forEach((ev) => {
@@ -202,23 +207,55 @@ function MayorDashboardPage() {
     return { total, levelCounts };
   }, [filteredEvents]);
 
-  const topProblems = useMemo(() => {
+  const deviationCounts = useMemo(() => {
+    const levelCounts = { 1: 0, 2: 0, 3: 0 } as Record<1 | 2 | 3, number>;
+    deviations.forEach((dev) => {
+      if (dev.level === 1 || dev.level === 2 || dev.level === 3) levelCounts[dev.level] += 1;
+    });
+    const total = deviations.length;
+    return { total, levelCounts };
+  }, [deviations]);
+
+  const topEvents = useMemo(() => {
     return [...filteredEvents]
       .sort((a, b) => dayjs(b.created_at).valueOf() - dayjs(a.created_at).valueOf())
       .filter((ev) => ev.msg?.level)
       .slice(0, 5);
   }, [filteredEvents]);
 
+  const topDeviations = useMemo(() => {
+    return [...deviations]
+      .filter((d) => d.level != null)
+      .sort((a, b) => {
+        const levelWeight = (lvl?: number | null) => (lvl === 1 ? 3 : lvl === 2 ? 2 : lvl === 3 ? 1 : 0);
+        const diff = (val?: number | null, ref?: number | null) =>
+          val != null && ref != null ? Math.abs(val - ref) : 0;
+        const levelCompare = levelWeight(b.level) - levelWeight(a.level);
+        if (levelCompare !== 0) return levelCompare;
+        return diff(b.value, b.reference) - diff(a.value, a.reference);
+      })
+      .slice(0, 5);
+  }, [deviations]);
+
   const subsystemAggregation = useMemo(() => {
+    if (viewMode === 'events') {
+      const map = new Map<string, number>();
+      filteredEvents.forEach((ev) => {
+        const lvl = ev.msg?.level;
+        if (lvl !== 1) return;
+        const key = ev.msg?.subsystem || ev.msg?.network_id || 'Неизвестно';
+        map.set(key, (map.get(key) || 0) + 1);
+      });
+      return Array.from(map.entries());
+    }
     const map = new Map<string, number>();
-    filteredEvents.forEach((ev) => {
-      const lvl = ev.msg?.level;
-      if (lvl !== 3) return;
-      const key = ev.msg?.subsystem || ev.msg?.network_id || 'Неизвестно';
+    deviations.forEach((dev) => {
+      if (dev.level !== 1) return;
+      const key = String(dev.edge_id);
       map.set(key, (map.get(key) || 0) + 1);
     });
     return Array.from(map.entries());
-  }, [filteredEvents]);
+  }, [filteredEvents, deviations, viewMode]);
 
   return (
     <div>
@@ -231,25 +268,29 @@ function MayorDashboardPage() {
         </Col>
         <Col span={12} style={{ textAlign: 'right' }}>
           <Space>
+            <Segmented
+              value={viewMode}
+              onChange={(val) => setViewMode(val as 'deviations' | 'events')}
+              options={[
+                { label: 'Отклонения', value: 'deviations' },
+                { label: 'События', value: 'events' },
+              ]}
+            />
             <RangePicker value={dateRange} onChange={(v) => setDateRange(v as any)} />
             <Select
               placeholder="Уровень"
               allowClear
               value={level ?? undefined}
               onChange={(val) => setLevel((val as 1 | 2 | 3 | undefined) ?? null)}
-              options={[
-                { value: 1, label: '1' },
-                { value: 2, label: '2' },
-                { value: 3, label: '3' },
-              ]}
-              style={{ width: 120 }}
+              options={[1, 2, 3].map((lvl) => ({ value: lvl, label: getSeverityMeta(lvl as 1 | 2 | 3).tagText }))}
+              style={{ width: 160 }}
             />
             <Select
               placeholder="Сеть"
               value={selectedNetwork}
               onChange={(v) => setSelectedNetwork(v)}
               options={networks.map((n) => ({ value: n.id, label: n.name }))}
-              style={{ width: 200 }}
+              style={{ width: 220 }}
             />
           </Space>
         </Col>
@@ -258,59 +299,93 @@ function MayorDashboardPage() {
       <Row gutter={16}>
         <Col span={6}>
           <Card>
-            <Statistic title="Всего событий" value={counts.total} loading={loading} />
+            <Statistic
+              title={viewMode === 'events' ? 'Всего событий' : 'Всего отклонений'}
+              value={viewMode === 'events' ? eventCounts.total : deviationCounts.total}
+              loading={loading && viewMode === 'events'}
+            />
           </Card>
         </Col>
-        <Col span={6}>
-          <Card>
-            <Statistic title="Критичные (3)" value={counts.levelCounts[3]} loading={loading} />
-          </Card>
-        </Col>
-        <Col span={6}>
-          <Card>
-            <Statistic title="Серьёзные (2)" value={counts.levelCounts[2]} loading={loading} />
-          </Card>
-        </Col>
-        <Col span={6}>
-          <Card>
-            <Statistic title="Внимание (1)" value={counts.levelCounts[1]} loading={loading} />
-          </Card>
-        </Col>
+        {[1, 2, 3].map((lvl) => {
+          const meta = getSeverityMeta(lvl as 1 | 2 | 3);
+          return (
+            <Col span={6} key={lvl}>
+              <Card>
+                <Statistic
+                  title={meta.tagText}
+                  value={
+                    viewMode === 'events'
+                      ? eventCounts.levelCounts[lvl as 1 | 2 | 3]
+                      : deviationCounts.levelCounts[lvl as 1 | 2 | 3]
+                  }
+                  loading={loading && viewMode === 'events'}
+                />
+              </Card>
+            </Col>
+          );
+        })}
       </Row>
 
       <Row gutter={16} className="page-section">
         <Col span={12}>
-          <Card title="Основные проблемы дня">
-            <List
-              dataSource={topProblems}
-              renderItem={(item) => (
-                <List.Item>
-                  <Space direction="vertical" style={{ width: '100%' }}>
-                    <Space>
-                      <Typography.Text strong>
-                        {dayjs(item.created_at).format('DD.MM HH:mm')}
+          <Card title={viewMode === 'events' ? 'Основные события' : 'Основные отклонения'}>
+            {viewMode === 'events' ? (
+              <List
+                dataSource={topEvents}
+                renderItem={(item) => (
+                  <List.Item>
+                    <Space direction="vertical" style={{ width: '100%' }}>
+                      <Space>
+                        <Typography.Text strong>{dayjs(item.created_at).format('DD.MM HH:mm')}</Typography.Text>
+                        <LevelTag level={item.msg?.level} />
+                      </Space>
+                      <Typography.Text>
+                        {item.msg?.description || item.msg?.title || JSON.stringify(item.msg).slice(0, 160)}
                       </Typography.Text>
-                      <LevelTag level={item.msg?.level} />
+                      {item.msg?.regulation && (
+                        <Typography.Text type="secondary">Регламент: {item.msg.regulation}</Typography.Text>
+                      )}
+                      {item.msg?.recommendation && (
+                        <Typography.Text type="secondary">Рекомендация: {item.msg.recommendation}</Typography.Text>
+                      )}
                     </Space>
-                    <Typography.Text>{item.msg?.description || item.msg?.title}</Typography.Text>
-                    {item.msg?.regulation && (
-                      <Typography.Text type="secondary">
-                        Регламент: {item.msg.regulation}
+                  </List.Item>
+                )}
+              />
+            ) : (
+              <List
+                dataSource={topDeviations}
+                renderItem={(item) => (
+                  <List.Item>
+                    <Space direction="vertical" style={{ width: '100%' }}>
+                      <Space>
+                        <Tag color={getSeverityMeta(item.level as any).color}>
+                          {getSeverityMeta(item.level as any).tagText}
+                        </Tag>
+                        <Typography.Text strong>Ребро {item.edge_id}</Typography.Text>
+                      </Space>
+                      <Typography.Text>
+                        Параметр: {item.type} | Факт: {item.value ?? '—'} | Норма: {item.reference ?? '—'}
                       </Typography.Text>
-                    )}
-                    {item.msg?.recommendation && (
-                      <Typography.Text type="secondary">
-                        Рекомендация: {item.msg.recommendation}
-                      </Typography.Text>
-                    )}
-                  </Space>
-                </List.Item>
-              )}
-            />
+                      {item.regulation && (
+                        <Typography.Text type="secondary" style={{ whiteSpace: 'pre-wrap' }}>
+                          Регламент: {item.regulation}
+                        </Typography.Text>
+                      )}
+                      {item.recommendation && (
+                        <Typography.Text type="secondary" style={{ whiteSpace: 'pre-wrap' }}>
+                          Рекомендация: {item.recommendation}
+                        </Typography.Text>
+                      )}
+                    </Space>
+                  </List.Item>
+                )}
+              />
+            )}
           </Card>
         </Col>
         <Col span={12}>
-          <Card title="Критичные события по подсистемам">
+          <Card title={viewMode === 'events' ? 'Критичные события по подсистемам' : 'Критичные отклонения по рёбрам'}>
             <List
               dataSource={subsystemAggregation}
               renderItem={([key, value]) => (
@@ -326,25 +401,35 @@ function MayorDashboardPage() {
         </Col>
       </Row>
 
-      <div className="page-section">
-        <Card title="Карта горячих точек">
-          {topology ? (
-            <div>
-              <div
-                id="mayorMap"
-                ref={mapContainerRef}
-                style={{ height: 380, width: '100%', borderRadius: 8, overflow: 'hidden' }}
-              />
-              <Typography.Paragraph style={{ marginTop: 12 }}>
-                На карте отображена топология теплосети. Красным подсвечены участки с критичными
-                отклонениями (уровень 3), остальная сеть показывается спокойным синим цветом.
-              </Typography.Paragraph>
-            </div>
-          ) : (
-            <Typography.Text>Выберите сеть, чтобы показать карту.</Typography.Text>
-          )}
-        </Card>
-      </div>
+      {viewMode === 'deviations' ? (
+        <div className="page-section">
+          <Card title="Карта горячих точек">
+            {topology ? (
+              <div>
+                <div
+                  id="mayorMap"
+                  ref={mapContainerRef}
+                  style={{ height: 380, width: '100%', borderRadius: 8, overflow: 'hidden' }}
+                />
+                <Typography.Paragraph style={{ marginTop: 12 }}>
+                  На карте отображена топология теплосети. Красным подсвечены участки с критичными отклонениями
+                  (уровень 1), остальная сеть показывается спокойным синим цветом.
+                </Typography.Paragraph>
+              </div>
+            ) : (
+              <Typography.Text>Выберите сеть, чтобы показать карту.</Typography.Text>
+            )}
+          </Card>
+        </div>
+      ) : (
+        <div className="page-section">
+          <Card title="Карта недоступна в режиме «События»">
+            <Typography.Paragraph type="secondary">
+              Переключитесь на режим «Отклонения», чтобы увидеть топологию и горячие точки сети.
+            </Typography.Paragraph>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
