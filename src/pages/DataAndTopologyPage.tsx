@@ -1,43 +1,22 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Card, Col, Empty, Row, Select, Spin, Table, Tag, Typography, message } from 'antd';
+import { useEffect, useMemo, useState } from 'react';
+import { Button, Card, Col, Empty, Row, Select, Space, Table, Tag, Typography, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
-import {
-  DeviationGetResponse,
-  LogsGetResponse,
-  NetworkResponse,
-  TopologyGetResponse,
-} from '../api/types';
-import { fetchDeviations, fetchLogs, fetchNetworks, fetchTopology } from '../api/client';
+import { DeviationGetResponse, LogsGetResponse, NetworkResponse } from '../api/types';
+import { fetchDeviations, fetchLogs, fetchNetworks } from '../api/client';
 import { getSeverityMeta, SeverityLevel } from '../utils/severity';
-
-declare const ymaps: any;
-
-function mercatorToLatLon(x: number, y: number) {
-  const R_MAJOR = 6378137.0;
-  const lon = (x / R_MAJOR) * (180 / Math.PI);
-  const lat = (2 * Math.atan(Math.exp(y / R_MAJOR)) - Math.PI / 2) * (180 / Math.PI);
-  return { lat, lon };
-}
-
-type TopologyEdgeMap = Map<number, any>;
+import { YandexTopologyMap } from '../components/maps/YandexTopologyMap';
 
 function DataAndTopologyPage() {
   const [networks, setNetworks] = useState<NetworkResponse[]>([]);
   const [selectedNetworkId, setSelectedNetworkId] = useState<string | null>(null);
-  const [topology, setTopology] = useState<TopologyGetResponse | null>(null);
   const [logs, setLogs] = useState<LogsGetResponse[]>([]);
   const [selectedLogId, setSelectedLogId] = useState<number | null>(null);
   const [deviations, setDeviations] = useState<DeviationGetResponse[]>([]);
   const [loadingNetworks, setLoadingNetworks] = useState(false);
-  const [loadingTopology, setLoadingTopology] = useState(false);
+  const [loadingLogs, setLoadingLogs] = useState(false);
   const [loadingDeviations, setLoadingDeviations] = useState(false);
-
-  const mapContainerRef = useRef<HTMLDivElement | null>(null);
-  const mapInstanceRef = useRef<any>(null);
-  const edgeObjectsRef = useRef<TopologyEdgeMap>(new Map());
-  const nodesCollectionRef = useRef<any>(null);
-  const [mapReady, setMapReady] = useState(false);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<number | null>(null);
 
   useEffect(() => {
     setLoadingNetworks(true);
@@ -51,17 +30,11 @@ function DataAndTopologyPage() {
   }, []);
 
   useEffect(() => {
-    if (typeof ymaps !== 'undefined') {
-      ymaps.ready(() => setMapReady(true));
-    }
-  }, []);
-
-  useEffect(() => {
+    setSelectedEdgeId(null);
     if (!selectedNetworkId) return;
-    setLoadingTopology(true);
-    Promise.all([fetchTopology(selectedNetworkId), fetchLogs(selectedNetworkId)])
-      .then(([topo, logList]) => {
-        setTopology(topo);
+    setLoadingLogs(true);
+    fetchLogs(selectedNetworkId)
+      .then((logList) => {
         const sortedLogs = [...logList].sort(
           (a, b) => dayjs(b.timestamp).valueOf() - dayjs(a.timestamp).valueOf(),
         );
@@ -72,8 +45,8 @@ function DataAndTopologyPage() {
           setDeviations([]);
         }
       })
-      .catch(() => message.error('Ошибка при загрузке топологии и журналов'))
-      .finally(() => setLoadingTopology(false));
+      .catch(() => message.error('Ошибка при загрузке журналов'))
+      .finally(() => setLoadingLogs(false));
   }, [selectedNetworkId]);
 
   useEffect(() => {
@@ -85,96 +58,20 @@ function DataAndTopologyPage() {
       .finally(() => setLoadingDeviations(false));
   }, [selectedLogId, selectedNetworkId]);
 
-  const validCoordinates = useMemo(() => {
-    if (!topology) return [] as { lat: number; lon: number }[];
-    return topology.nodes
-      .filter((n) => n.WTK_x != null && n.WTK_y != null)
-      .map((n) => mercatorToLatLon(n.WTK_x as number, n.WTK_y as number));
-  }, [topology]);
-
-  const highlightedEdges = useMemo(() => {
-    const edgeLevels = new Map<number, DeviationGetResponse['level']>();
+  const highlightStyles = useMemo(() => {
+    const result: Record<number, { color?: string; width?: number; opacity?: number }> = {};
     deviations.forEach((dev) => {
-      if (dev.level) edgeLevels.set(dev.edge_id, dev.level);
+      if (!dev.level) return;
+      const meta = getSeverityMeta(dev.level as SeverityLevel);
+      result[dev.edge_id] = { color: meta.color, width: 4, opacity: 0.85 };
     });
-    return edgeLevels;
+    return result;
   }, [deviations]);
 
-  useEffect(() => {
-    if (!mapReady || !topology) return;
-    renderTopologyOnMap(topology, highlightedEdges);
-  }, [mapReady, topology, highlightedEdges]);
-
-  const renderTopologyOnMap = (data: TopologyGetResponse, edgeLevels: Map<number, number | null>) => {
-    if (!mapContainerRef.current) return;
-
-    const nodes = data.nodes.filter((n) => n.WTK_x != null && n.WTK_y != null);
-    if (!mapInstanceRef.current) {
-      const center = nodes.length
-        ? mercatorToLatLon(nodes[0].WTK_x as number, nodes[0].WTK_y as number)
-        : { lat: 55.751244, lon: 37.618423 };
-      mapInstanceRef.current = new ymaps.Map(mapContainerRef.current, {
-        center: [center.lat, center.lon],
-        zoom: 12,
-        controls: ['zoomControl', 'typeSelector', 'fullscreenControl'],
-      });
-    }
-
-    const map = mapInstanceRef.current;
-    map.geoObjects.removeAll();
-    edgeObjectsRef.current.clear();
-    nodesCollectionRef.current = new ymaps.GeoObjectCollection();
-
-    data.edges.forEach((edge) => {
-      const source = nodes.find((n) => n.id === edge.id_in);
-      const target = nodes.find((n) => n.id === edge.id_out);
-      if (!source || !target) return;
-      const p1 = mercatorToLatLon(source.WTK_x as number, source.WTK_y as number);
-      const p2 = mercatorToLatLon(target.WTK_x as number, target.WTK_y as number);
-      const color = getEdgeColor(edgeLevels.get(edge.id));
-      const polyline = new ymaps.Polyline(
-        [
-          [p1.lat, p1.lon],
-          [p2.lat, p2.lon],
-        ],
-        {},
-        {
-          strokeColor: color,
-          strokeWidth: 4,
-          opacity: 0.8,
-        },
-      );
-      map.geoObjects.add(polyline);
-      edgeObjectsRef.current.set(edge.id, polyline);
-    });
-
-    nodes.forEach((node) => {
-      const coords = mercatorToLatLon(node.WTK_x as number, node.WTK_y as number);
-      const placemark = new ymaps.Placemark(
-        [coords.lat, coords.lon],
-        {
-          balloonContent: `Узел ${node.id}<br/>WTK: ${node.WTK_x}, ${node.WTK_y}<br/>pos: ${node.pos_x}, ${node.pos_y}`,
-          iconCaption: `УЗ-${node.id}`,
-        },
-        { preset: 'islands#blueDotIconWithCaption' },
-      );
-      nodesCollectionRef.current.add(placemark);
-    });
-
-    map.geoObjects.add(nodesCollectionRef.current);
-
-    if (validCoordinates.length) {
-      const lats = validCoordinates.map((c) => c.lat);
-      const lons = validCoordinates.map((c) => c.lon);
-      const bounds = [
-        [Math.min(...lats), Math.min(...lons)],
-        [Math.max(...lats), Math.max(...lons)],
-      ];
-      map.setBounds(bounds, { checkZoomRange: true, zoomMargin: 30 });
-    }
-  };
-
-  const getEdgeColor = (level?: number | null) => getSeverityMeta(level as SeverityLevel).color;
+  const filteredDeviations = useMemo(() => {
+    if (selectedEdgeId == null) return deviations;
+    return deviations.filter((d) => d.edge_id === selectedEdgeId);
+  }, [deviations, selectedEdgeId]);
 
   const deviationColumns: ColumnsType<DeviationGetResponse> = [
     { title: 'Ребро', dataIndex: 'edge_id', width: 90 },
@@ -182,12 +79,12 @@ function DataAndTopologyPage() {
     {
       title: 'Факт',
       dataIndex: 'value',
-      render: (v: number | null | undefined) => (v ?? '—'),
+      render: (v: number | null | undefined) => v ?? '—',
     },
     {
       title: 'Норма',
       dataIndex: 'reference',
-      render: (v: number | null | undefined) => (v ?? '—'),
+      render: (v: number | null | undefined) => v ?? '—',
     },
     {
       title: 'Уровень',
@@ -272,15 +169,17 @@ function DataAndTopologyPage() {
           трубопроводов. Сигма рассчитывает по ним отклонения и подсвечивает проблемные участки.
         </Typography.Paragraph>
         <Card bodyStyle={{ padding: 12 }}>
-          {loadingTopology && <Spin tip="Топология загружается..." />}
-          {!loadingTopology && (!topology || !validCoordinates.length) && (
-            <Empty description="Топология недоступна или не содержит координат" />
+          {selectedNetworkId ? (
+            <YandexTopologyMap
+              networkId={selectedNetworkId}
+              height={440}
+              highlightEdges={highlightStyles}
+              selectedEdgeId={selectedEdgeId}
+              onEdgeSelect={setSelectedEdgeId}
+            />
+          ) : (
+            <Empty description="Выберите сеть" />
           )}
-          <div
-            ref={mapContainerRef}
-            id="topologyMap"
-            style={{ height: 440, width: '100%', borderRadius: 8, overflow: 'hidden' }}
-          />
         </Card>
         <Typography.Paragraph style={{ marginTop: 8 }} type="secondary">
           Каждая точка — узел теплосети. Линии подсвечиваются по уровню критичности отклонений: красный — высокий,
@@ -302,6 +201,7 @@ function DataAndTopologyPage() {
                 size="small"
                 columns={logColumns}
                 dataSource={logs}
+                loading={loadingLogs}
                 pagination={false}
                 onRow={(record) => ({
                   onClick: () => setSelectedLogId(record.id),
@@ -318,14 +218,33 @@ function DataAndTopologyPage() {
               title={selectedLogId ? `Отклонения журнала #${selectedLogId}` : 'Отклонения'}
               size="small"
             >
-              <Table
-                rowKey="id"
-                size="small"
-                loading={loadingDeviations}
-                columns={deviationColumns}
-                dataSource={deviations}
-                pagination={{ pageSize: 6 }}
-              />
+              <Space direction="vertical" style={{ width: '100%' }}>
+                {selectedEdgeId && (
+                  <Space style={{ justifyContent: 'space-between', width: '100%' }}>
+                    <Typography.Text type="secondary">
+                      Показаны отклонения по ребру {selectedEdgeId}. Нажмите по карте, чтобы изменить выбор.
+                    </Typography.Text>
+                    <Button size="small" onClick={() => setSelectedEdgeId(null)}>
+                      Сбросить выделение
+                    </Button>
+                  </Space>
+                )}
+                <Table
+                  rowKey="id"
+                  size="small"
+                  loading={loadingDeviations}
+                  columns={deviationColumns}
+                  dataSource={filteredDeviations}
+                  pagination={{ pageSize: 6 }}
+                  onRow={(record) => ({
+                    onClick: () => setSelectedEdgeId(record.edge_id),
+                    style: {
+                      cursor: 'pointer',
+                      background: selectedEdgeId === record.edge_id ? '#fffbe6' : undefined,
+                    },
+                  })}
+                />
+              </Space>
             </Card>
           </Col>
         </Row>
@@ -339,4 +258,3 @@ function DataAndTopologyPage() {
 }
 
 export default DataAndTopologyPage;
-

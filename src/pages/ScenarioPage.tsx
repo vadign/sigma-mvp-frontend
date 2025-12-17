@@ -1,25 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Button, Card, Col, Row, Space, Typography, message } from 'antd';
 import dayjs from 'dayjs';
-import TopologyGraph from '../components/TopologyGraph';
 import LevelTag from '../components/LevelTag';
-import {
-  fetchDeviations,
-  fetchEvents,
-  fetchLogs,
-  fetchNetworks,
-  fetchTopology,
-  updateDeviations,
-} from '../api/client';
-import { DeviationGetResponse, EventResponse, NetworkResponse, TopologyGetResponse } from '../api/types';
+import { fetchDeviations, fetchEvents, fetchLogs, fetchNetworks, updateDeviations } from '../api/client';
+import { DeviationGetResponse, EventResponse, NetworkResponse } from '../api/types';
+import { YandexTopologyMap } from '../components/maps/YandexTopologyMap';
 
 function ScenarioPage() {
   const [networks, setNetworks] = useState<NetworkResponse[]>([]);
   const [networkId, setNetworkId] = useState<string | undefined>();
-  const [topology, setTopology] = useState<TopologyGetResponse | null>(null);
   const [deviations, setDeviations] = useState<DeviationGetResponse[]>([]);
   const [latestEvent, setLatestEvent] = useState<EventResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<number | null>(null);
 
   useEffect(() => {
     fetchNetworks()
@@ -31,8 +24,7 @@ function ScenarioPage() {
   }, []);
 
   useEffect(() => {
-    if (!networkId) return;
-    fetchTopology(networkId).then(setTopology).catch(() => message.error('Ошибка загрузки топологии'));
+    setSelectedEdgeId(null);
   }, [networkId]);
 
   const runScenario = async () => {
@@ -56,7 +48,15 @@ function ScenarioPage() {
     }
   };
 
-  const hotEdges = useMemo(() => deviations.filter((d) => d.level === 3).map((d) => d.edge_id), [deviations]);
+  const highlightStyles = useMemo(() => {
+    const styles: Record<number, { color?: string; width?: number; opacity?: number }> = {};
+    deviations.forEach((d) => {
+      if (!d.level) return;
+      styles[d.edge_id] = { color: '#ff4d4f', width: d.level === 3 ? 6 : 4, opacity: 0.9 };
+    });
+    return styles;
+  }, [deviations]);
+
   const criticalDeviation = deviations.find((d) => d.level === 3) || deviations[0];
 
   return (
@@ -66,7 +66,7 @@ function ScenarioPage() {
         Шаги: событие в теплосети → отклонения → регламент → уведомления → дашборд мэра.
       </Typography.Paragraph>
 
-      <Button type="primary" onClick={runScenario} loading={loading}>
+      <Button type="primary" onClick={runScenario} loading={loading} disabled={!networkId}>
         Смоделировать аварию в теплосети
       </Button>
 
@@ -85,7 +85,7 @@ function ScenarioPage() {
             {deviations.length > 0 ? (
               <ul>
                 {deviations.map((d) => (
-                  <li key={d.id}>
+                  <li key={d.id} onClick={() => setSelectedEdgeId(d.edge_id)} style={{ cursor: 'pointer' }}>
                     Ребро {d.edge_id}, {d.type}: {d.value} / {d.reference} — <LevelTag level={d.level ?? undefined} />
                   </li>
                 ))}
@@ -140,8 +140,20 @@ function ScenarioPage() {
         </Col>
         <Col span={12}>
           <Card title="Топология с подсветкой отклонений">
-            {topology ? (
-              <TopologyGraph nodes={topology.nodes} edges={topology.edges} highlightEdges={hotEdges} />
+            {networkId ? (
+              <Space direction="vertical" style={{ width: '100%' }}>
+                <YandexTopologyMap
+                  networkId={networkId}
+                  height={360}
+                  highlightEdges={highlightStyles}
+                  selectedEdgeId={selectedEdgeId}
+                  onEdgeSelect={setSelectedEdgeId}
+                />
+                <Typography.Text type="secondary">
+                  Топология подтягивается из API сети. Нажмите на ребро, чтобы увидеть показатели и выделить его в
+                  списке отклонений.
+                </Typography.Text>
+              </Space>
             ) : (
               <Typography.Text>Загрузка топологии...</Typography.Text>
             )}
