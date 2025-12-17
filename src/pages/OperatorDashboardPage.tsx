@@ -14,19 +14,23 @@ import {
 import dayjs, { Dayjs } from 'dayjs';
 import EventsTable from '../components/EventsTable';
 import LevelTag from '../components/LevelTag';
-import { fetchEvents } from '../api/client';
-import { EventResponse } from '../api/types';
+import { fetchEvents, fetchNetworks } from '../api/client';
+import { EventResponse, NetworkResponse } from '../api/types';
+import { YandexTopologyMap } from '../components/maps/YandexTopologyMap';
 
 const { RangePicker } = DatePicker;
 
 function OperatorDashboardPage() {
   const [events, setEvents] = useState<EventResponse[]>([]);
+  const [networks, setNetworks] = useState<NetworkResponse[]>([]);
+  const [selectedNetworkId, setSelectedNetworkId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [level, setLevel] = useState<1 | 2 | 3 | null>(null);
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null]>([null, null]);
   const [skip, setSkip] = useState(0);
   const [limit] = useState(10);
   const [selectedEvent, setSelectedEvent] = useState<EventResponse | null>(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<number | null>(null);
 
   const loadEvents = () => {
     setLoading(true);
@@ -37,8 +41,33 @@ function OperatorDashboardPage() {
   };
 
   useEffect(() => {
+    fetchNetworks()
+      .then((list) => {
+        setNetworks(list);
+        if (list.length > 0) setSelectedNetworkId(list[0].id);
+      })
+      .catch(() => message.error('Не удалось загрузить сети'));
+  }, []);
+
+  useEffect(() => {
     loadEvents();
   }, [skip, level]);
+
+  useEffect(() => {
+    if (selectedEvent?.msg) {
+      const edgeId = selectedEvent.msg.edge_id;
+      setSelectedEdgeId(typeof edgeId === 'number' ? edgeId : null);
+      if (typeof selectedEvent.msg.network_id === 'string') {
+        setSelectedNetworkId(selectedEvent.msg.network_id);
+      }
+    } else {
+      setSelectedEdgeId(null);
+    }
+  }, [selectedEvent]);
+
+  useEffect(() => {
+    setSelectedEdgeId(null);
+  }, [selectedNetworkId]);
 
   const filteredEvents = useMemo(() => {
     return events.filter((ev) => {
@@ -61,7 +90,7 @@ function OperatorDashboardPage() {
         Лента событий, фильтры и детальная карточка для быстрого реагирования.
       </Typography.Paragraph>
 
-      <Space style={{ marginBottom: 16 }}>
+      <Space style={{ marginBottom: 16 }} wrap>
         <RangePicker value={dateRange} onChange={(v) => setDateRange(v as any)} />
         <Select
           placeholder="Уровень"
@@ -75,6 +104,14 @@ function OperatorDashboardPage() {
             { value: 3, label: '3' },
           ]}
         />
+        <Select
+          placeholder="Сеть для карты"
+          allowClear
+          style={{ width: 200 }}
+          value={selectedNetworkId ?? undefined}
+          onChange={(v) => setSelectedNetworkId(v ?? null)}
+          options={networks.map((n) => ({ value: n.id, label: n.name }))}
+        />
         <Button onClick={loadEvents}>Обновить</Button>
       </Space>
 
@@ -87,6 +124,25 @@ function OperatorDashboardPage() {
           <Button onClick={() => changePage('next')}>Вперёд</Button>
           <Typography.Text type="secondary">Показано {filteredEvents.length} записей</Typography.Text>
         </Space>
+      </Card>
+
+      <Card className="page-section" title="Карта топологии">
+        {selectedNetworkId ? (
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <YandexTopologyMap
+              networkId={selectedNetworkId}
+              height={360}
+              selectedEdgeId={selectedEdgeId}
+              onEdgeSelect={setSelectedEdgeId}
+            />
+            <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
+              Выделите событие с указанием edge_id, чтобы подсветить участок на карте, или нажмите на ребро, чтобы
+              увидеть его показатели.
+            </Typography.Paragraph>
+          </Space>
+        ) : (
+          <Typography.Text>Загрузка списка сетей...</Typography.Text>
+        )}
       </Card>
 
       <Drawer
@@ -113,7 +169,7 @@ function OperatorDashboardPage() {
             </Card>
             <Typography.Paragraph type="secondary">
               Если событие привязано к узлу или ребру (network_id/node_id/edge_id), оператор может подсветить
-              его на топологии, используя компонент из вкладки «Данные и топология».
+              его на топологии, используя интерактивную карту.
             </Typography.Paragraph>
           </Space>
         )}
