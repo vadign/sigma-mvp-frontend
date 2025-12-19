@@ -12,6 +12,7 @@ function DataAndTopologyPage() {
   const [selectedNetworkId, setSelectedNetworkId] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogsGetResponse[]>([]);
   const [selectedLogId, setSelectedLogId] = useState<number | null>(null);
+  const [selectedLogNetworkId, setSelectedLogNetworkId] = useState<string | null>(null);
   const [deviations, setDeviations] = useState<DeviationGetResponse[]>([]);
   const [loadingNetworks, setLoadingNetworks] = useState(false);
   const [loadingLogs, setLoadingLogs] = useState(false);
@@ -32,6 +33,7 @@ function DataAndTopologyPage() {
   useEffect(() => {
     setSelectedEdgeId(null);
     setSelectedLogId(null);
+    setSelectedLogNetworkId(null);
     setDeviations([]);
     setLogs([]);
     if (!selectedNetworkId) return;
@@ -42,9 +44,12 @@ function DataAndTopologyPage() {
           (a, b) => dayjs(b.timestamp).valueOf() - dayjs(a.timestamp).valueOf(),
         );
         setLogs(sortedLogs);
-        if (sortedLogs.length > 0) setSelectedLogId(sortedLogs[0].id);
-        else {
+        if (sortedLogs.length > 0) {
+          setSelectedLogId(sortedLogs[0].id);
+          setSelectedLogNetworkId(selectedNetworkId);
+        } else {
           setSelectedLogId(null);
+          setSelectedLogNetworkId(null);
           setDeviations([]);
         }
       })
@@ -53,13 +58,23 @@ function DataAndTopologyPage() {
   }, [selectedNetworkId]);
 
   useEffect(() => {
-    if (!selectedNetworkId || selectedLogId == null) return;
+    if (
+      !selectedNetworkId ||
+      selectedLogId == null ||
+      selectedLogNetworkId !== selectedNetworkId
+    )
+      return;
     setLoadingDeviations(true);
     fetchDeviations(selectedNetworkId, selectedLogId)
       .then(setDeviations)
       .catch(() => message.error('Не удалось загрузить отклонения'))
       .finally(() => setLoadingDeviations(false));
-  }, [selectedLogId, selectedNetworkId]);
+  }, [selectedLogId, selectedLogNetworkId, selectedNetworkId]);
+
+  const handleSelectLog = (logId: number | null) => {
+    setSelectedLogId(logId);
+    setSelectedLogNetworkId(logId == null ? null : selectedNetworkId);
+  };
 
   const highlightStyles = useMemo(() => {
     const result: Record<number, { color?: string; width?: number; opacity?: number }> = {};
@@ -124,7 +139,7 @@ function DataAndTopologyPage() {
       title: 'Действие',
       width: 140,
       render: (_, record) => (
-        <a onClick={() => setSelectedLogId(record.id)} role="button">
+        <a onClick={() => handleSelectLog(record.id)} role="button">
           Показать отклонения
         </a>
       ),
@@ -207,7 +222,7 @@ function DataAndTopologyPage() {
                 loading={loadingLogs}
                 pagination={false}
                 onRow={(record) => ({
-                  onClick: () => setSelectedLogId(record.id),
+                  onClick: () => handleSelectLog(record.id),
                   style: {
                     cursor: 'pointer',
                     background: selectedLogId === record.id ? '#e6f4ff' : undefined,
