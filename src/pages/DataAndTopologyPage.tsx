@@ -31,6 +31,9 @@ function DataAndTopologyPage() {
 
   useEffect(() => {
     setSelectedEdgeId(null);
+    setSelectedLogId(null);
+    setDeviations([]);
+    setLogs([]);
     if (!selectedNetworkId) return;
     setLoadingLogs(true);
     fetchLogs(selectedNetworkId)
