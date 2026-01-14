@@ -19,6 +19,7 @@ import { fetchDeviations, fetchEvents, fetchLogs, fetchNetworks } from '../api/c
 import { DeviationGetResponse, EventResponse, NetworkResponse } from '../api/types';
 import { getSeverityMeta } from '../utils/severity';
 import { YandexTopologyMap } from '../components/maps/YandexTopologyMap';
+import { formatEdgeShortLabel, getDeviationTypeLabel } from '../utils/topologyLabels';
 
 const { RangePicker } = DatePicker;
 
@@ -145,7 +146,8 @@ function MayorDashboardPage() {
       filteredEvents.forEach((ev) => {
         const lvl = ev.msg?.level;
         if (lvl !== 1) return;
-        const key = ev.msg?.subsystem || ev.msg?.network_id || 'Неизвестно';
+        const networkName = networks.find((network) => network.id === ev.msg?.network_id)?.name;
+        const key = ev.msg?.subsystem || networkName || ev.msg?.network_id || 'Неизвестно';
         map.set(key, (map.get(key) || 0) + 1);
       });
       return Array.from(map.entries());
@@ -153,23 +155,25 @@ function MayorDashboardPage() {
     const map = new Map<string, number>();
     deviations.forEach((dev) => {
       if (dev.level !== 1) return;
-      const key = String(dev.edge_id);
+      const key = formatEdgeShortLabel(dev.edge_id);
       map.set(key, (map.get(key) || 0) + 1);
     });
     return Array.from(map.entries());
-  }, [filteredEvents, deviations, viewMode]);
+  }, [filteredEvents, deviations, networks, viewMode]);
 
   return (
-    <div>
-      <Row gutter={16} align="middle" style={{ marginBottom: 12 }}>
+    <div className="page-shell">
+      <Row gutter={16} align="middle" className="dashboard-header">
         <Col span={12}>
-          <Typography.Title level={3}>Дашборд мэра</Typography.Title>
+          <Typography.Title level={3} className="page-title">
+            Дашборд мэра
+          </Typography.Title>
           <Typography.Paragraph>
             Общая картина рисков по подсистемам города и «горячие точки».
           </Typography.Paragraph>
         </Col>
-        <Col span={12} style={{ textAlign: 'right' }}>
-          <Space>
+        <Col span={12} className="dashboard-filters">
+          <Space wrap>
             <Segmented
               value={viewMode}
               onChange={(val) => setViewMode(val as 'deviations' | 'events')}
@@ -264,10 +268,11 @@ function MayorDashboardPage() {
                         <Tag color={getSeverityMeta(item.level as any).color}>
                           {getSeverityMeta(item.level as any).tagText}
                         </Tag>
-                        <Typography.Text strong>Ребро {item.edge_id}</Typography.Text>
+                        <Typography.Text strong>{formatEdgeShortLabel(item.edge_id)}</Typography.Text>
                       </Space>
                       <Typography.Text>
-                        Параметр: {item.type} | Факт: {item.value ?? '—'} | Норма: {item.reference ?? '—'}
+                        Параметр: {getDeviationTypeLabel(item.type)} | Факт: {item.value ?? '—'} | Норма:{' '}
+                        {item.reference ?? '—'}
                       </Typography.Text>
                       {item.regulation && (
                         <Typography.Text type="secondary" style={{ whiteSpace: 'pre-wrap' }}>
@@ -287,7 +292,11 @@ function MayorDashboardPage() {
           </Card>
         </Col>
         <Col span={12}>
-          <Card title={viewMode === 'events' ? 'Критичные события по подсистемам' : 'Критичные отклонения по рёбрам'}>
+          <Card
+            title={
+              viewMode === 'events' ? 'Критичные события по подсистемам' : 'Критичные отклонения по участкам'
+            }
+          >
             <List
               dataSource={subsystemAggregation}
               renderItem={([key, value]) => (

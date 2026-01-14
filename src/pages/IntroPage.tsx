@@ -4,19 +4,10 @@ const { Title, Paragraph, Text } = Typography;
 
 function IntroPage() {
   return (
-    <div style={{ background: '#f7f8fa', minHeight: '100%', padding: '40px 24px' }}>
-      <div
-        style={{
-          maxWidth: 1100,
-          margin: '0 auto',
-          background: '#fff',
-          padding: '40px 32px',
-          borderRadius: 12,
-          boxShadow: '0 8px 24px rgba(0,0,0,0.04)',
-        }}
-      >
+    <div className="page-shell intro-page">
+      <div className="hero-card">
         <section style={{ marginBottom: 32 }}>
-          <Title level={1} style={{ marginBottom: 16 }}>
+          <Title level={1} className="page-title" style={{ marginBottom: 16 }}>
             Сигма: от событий в городе к управленческим решениям
           </Title>
           <Paragraph style={{ fontSize: 18, marginBottom: 16 }}>
@@ -35,13 +26,12 @@ function IntroPage() {
           <Title level={3} style={{ marginBottom: 16 }}>
             Три ключевые функции Сигмы
           </Title>
-          <Row gutter={[16, 16]}>
+          <Row gutter={[16, 16]} className="intro-grid">
             <Col xs={24} md={8}>
               <Card
                 title="Информирование"
-                bordered
+                className="info-card"
                 headStyle={{ fontSize: 18, fontWeight: 600 }}
-                bodyStyle={{ minHeight: 260 }}
               >
                 <Text strong style={{ display: 'block', marginBottom: 8 }}>
                   Единый взгляд на события и инциденты в городской среде
@@ -58,9 +48,8 @@ function IntroPage() {
             <Col xs={24} md={8}>
               <Card
                 title="Предложение решений"
-                bordered
+                className="info-card"
                 headStyle={{ fontSize: 18, fontWeight: 600 }}
-                bodyStyle={{ minHeight: 260 }}
               >
                 <Text strong style={{ display: 'block', marginBottom: 8 }}>
                   Рекомендации по действию на основе цифровых регламентов
@@ -77,9 +66,8 @@ function IntroPage() {
             <Col xs={24} md={8}>
               <Card
                 title="Прогнозирование и моделирование"
-                bordered
+                className="info-card"
                 headStyle={{ fontSize: 18, fontWeight: 600 }}
-                bodyStyle={{ minHeight: 260 }}
               >
                 <Text strong style={{ display: 'block', marginBottom: 8 }}>
                   Переход от реакции на проблемы к их предупреждению

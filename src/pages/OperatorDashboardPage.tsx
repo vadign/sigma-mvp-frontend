@@ -14,6 +14,7 @@ import {
 import dayjs, { Dayjs } from 'dayjs';
 import EventsTable from '../components/EventsTable';
 import LevelTag from '../components/LevelTag';
+import EventSummary from '../components/EventSummary';
 import { fetchEvents, fetchNetworks } from '../api/client';
 import { EventResponse, NetworkResponse } from '../api/types';
 import { YandexTopologyMap } from '../components/maps/YandexTopologyMap';
@@ -84,13 +85,15 @@ function OperatorDashboardPage() {
   };
 
   return (
-    <div>
-      <Typography.Title level={3}>Дашборд оператора</Typography.Title>
+    <div className="page-shell">
+      <Typography.Title level={3} className="page-title">
+        Дашборд оператора
+      </Typography.Title>
       <Typography.Paragraph>
         Лента событий, фильтры и детальная карточка для быстрого реагирования.
       </Typography.Paragraph>
 
-      <Space style={{ marginBottom: 16 }} wrap>
+      <Space className="filter-bar" wrap>
         <RangePicker value={dateRange} onChange={(v) => setDateRange(v as any)} />
         <Select
           placeholder="Уровень"
@@ -136,8 +139,8 @@ function OperatorDashboardPage() {
               onEdgeSelect={setSelectedEdgeId}
             />
             <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
-              Выделите событие с указанием edge_id, чтобы подсветить участок на карте, или нажмите на ребро, чтобы
-              увидеть его показатели.
+              Выделите событие с указанием участка трубы, чтобы подсветить его на карте, или нажмите на линию,
+              чтобы увидеть показатели.
             </Typography.Paragraph>
           </Space>
         ) : (
@@ -157,19 +160,10 @@ function OperatorDashboardPage() {
               Время: {dayjs(selectedEvent.created_at).format('DD.MM.YYYY HH:mm:ss')}
             </Typography.Text>
             <LevelTag level={selectedEvent.msg?.level} />
-            <Typography.Text>Описание: {selectedEvent.msg?.description || selectedEvent.msg?.title}</Typography.Text>
-            {selectedEvent.msg?.regulation && (
-              <Typography.Text>Применённый регламент: {selectedEvent.msg.regulation}</Typography.Text>
-            )}
-            {selectedEvent.msg?.recommendation && (
-              <Typography.Text>Рекомендованное действие: {selectedEvent.msg.recommendation}</Typography.Text>
-            )}
-            <Card size="small" title="Детали события">
-              <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(selectedEvent.msg, null, 2)}</pre>
-            </Card>
+            <EventSummary msg={selectedEvent.msg} networks={networks} showLevel={false} />
             <Typography.Paragraph type="secondary">
-              Если событие привязано к узлу или ребру (network_id/node_id/edge_id), оператор может подсветить
-              его на топологии, используя интерактивную карту.
+              Если событие привязано к сети, узлу или участку, оператор может подсветить его на топологии,
+              используя интерактивную карту.
             </Typography.Paragraph>
           </Space>
         )}

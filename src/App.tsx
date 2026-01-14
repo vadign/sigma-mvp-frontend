@@ -53,21 +53,24 @@ function App() {
   }, [activeKey]);
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Header style={{ display: 'flex', alignItems: 'center' }}>
-        <Typography.Title level={4} style={{ color: '#fff', margin: '0 16px 0 0' }}>
-          Сигма — демонстрация возможностей
-        </Typography.Title>
+    <Layout className="app-layout">
+      <Header className="app-header">
+        <div className="app-brand">
+          <div className="app-logo">Σ</div>
+          <div>
+            <Typography.Text className="app-title">Сигма</Typography.Text>
+            <Typography.Text className="app-subtitle">демонстрация возможностей</Typography.Text>
+          </div>
+        </div>
         <Menu
-          theme="dark"
           mode="horizontal"
           selectedKeys={[activeKey]}
           onClick={(e) => setActiveKey(e.key)}
           items={tabs}
-          style={{ flex: 1, minWidth: 0 }}
+          className="app-menu"
         />
       </Header>
-      <Content style={{ padding: 24 }}>{content}</Content>
+      <Content className="app-content">{content}</Content>
     </Layout>
   );
 }

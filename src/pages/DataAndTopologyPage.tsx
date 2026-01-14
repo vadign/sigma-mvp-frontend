@@ -6,6 +6,7 @@ import { DeviationGetResponse, LogsGetResponse, NetworkResponse } from '../api/t
 import { fetchDeviations, fetchLogs, fetchNetworks } from '../api/client';
 import { getSeverityMeta, SeverityLevel } from '../utils/severity';
 import { YandexTopologyMap } from '../components/maps/YandexTopologyMap';
+import { formatEdgeShortLabel, getDeviationTypeLabel } from '../utils/topologyLabels';
 
 function DataAndTopologyPage() {
   const [networks, setNetworks] = useState<NetworkResponse[]>([]);
@@ -92,8 +93,18 @@ function DataAndTopologyPage() {
   }, [deviations, selectedEdgeId]);
 
   const deviationColumns: ColumnsType<DeviationGetResponse> = [
-    { title: 'Ребро', dataIndex: 'edge_id', width: 90 },
-    { title: 'Параметр', dataIndex: 'type', width: 120 },
+    {
+      title: 'Участок',
+      dataIndex: 'edge_id',
+      width: 140,
+      render: (value: number) => formatEdgeShortLabel(value),
+    },
+    {
+      title: 'Параметр',
+      dataIndex: 'type',
+      width: 180,
+      render: (value: DeviationGetResponse['type']) => getDeviationTypeLabel(value),
+    },
     {
       title: 'Факт',
       dataIndex: 'value',
@@ -147,11 +158,11 @@ function DataAndTopologyPage() {
   ];
 
   return (
-    <div className="page-section" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <Typography.Title level={2} style={{ marginBottom: 8 }}>
+    <div className="page-shell">
+      <Typography.Title level={2} className="page-title" style={{ marginBottom: 8 }}>
         Топология и отклонения
       </Typography.Title>
-      <section>
+      <section className="section-block">
         <Typography.Title level={3}>Источник данных: теплосеть</Typography.Title>
         <Typography.Paragraph type="secondary" style={{ maxWidth: 900 }}>
           Сигма подключается к цифровой модели теплосети и получает от неё данные в режиме, близком к
@@ -160,7 +171,7 @@ function DataAndTopologyPage() {
         <Row gutter={16} align="middle">
           <Col xs={24} sm={12} md={8} lg={6}>
             <Typography.Text strong>Выберите сеть</Typography.Text>
-            <div style={{ marginTop: 8 }}>
+            <div className="field-stack">
               <Select
                 loading={loadingNetworks}
                 placeholder="Сеть"
@@ -180,13 +191,13 @@ function DataAndTopologyPage() {
         </Row>
       </section>
 
-      <section>
+      <section className="section-block">
         <Typography.Title level={4}>Карта и топология теплосети</Typography.Title>
         <Typography.Paragraph>
           На карте отображается реальная схема сети: точки — узлы (колодцы, камеры, насосные), линии — участки
           трубопроводов. Сигма рассчитывает по ним отклонения и подсвечивает проблемные участки.
         </Typography.Paragraph>
-        <Card bodyStyle={{ padding: 12 }}>
+        <Card bodyStyle={{ padding: 12 }} className="soft-card">
           {selectedNetworkId ? (
             <YandexTopologyMap
               networkId={selectedNetworkId}
@@ -205,7 +216,7 @@ function DataAndTopologyPage() {
         </Typography.Paragraph>
       </section>
 
-      <section>
+      <section className="section-block">
         <Typography.Title level={4}>Журнал отклонений</Typography.Title>
         <Typography.Paragraph>
           Сигма фиксирует отклонения параметров сети, присваивает им уровни критичности по цифровым регламентам и
@@ -225,7 +236,7 @@ function DataAndTopologyPage() {
                   onClick: () => handleSelectLog(record.id),
                   style: {
                     cursor: 'pointer',
-                    background: selectedLogId === record.id ? '#e6f4ff' : undefined,
+                    background: selectedLogId === record.id ? 'rgba(47, 107, 255, 0.12)' : undefined,
                   },
                 })}
               />
@@ -240,7 +251,8 @@ function DataAndTopologyPage() {
                 {selectedEdgeId && (
                   <Space style={{ justifyContent: 'space-between', width: '100%' }}>
                     <Typography.Text type="secondary">
-                      Показаны отклонения по ребру {selectedEdgeId}. Нажмите по карте, чтобы изменить выбор.
+                      Показаны отклонения по {formatEdgeShortLabel(selectedEdgeId)}. Нажмите по карте, чтобы
+                      изменить выбор.
                     </Typography.Text>
                     <Button size="small" onClick={() => setSelectedEdgeId(null)}>
                       Сбросить выделение
@@ -258,7 +270,7 @@ function DataAndTopologyPage() {
                     onClick: () => setSelectedEdgeId(record.edge_id),
                     style: {
                       cursor: 'pointer',
-                      background: selectedEdgeId === record.edge_id ? '#fffbe6' : undefined,
+                      background: selectedEdgeId === record.edge_id ? 'rgba(255, 186, 65, 0.18)' : undefined,
                     },
                   })}
                 />
