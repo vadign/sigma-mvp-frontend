@@ -30,6 +30,7 @@ function ScenarioPage() {
         const lastLog = logs[0];
         const devs = await fetchDeviations(networkId, lastLog.id);
         setDeviations(devs);
+      }
       message.success('Сценарий обновлён');
     } catch (e) {
       message.error('Не удалось выполнить сценарий');
@@ -65,6 +66,7 @@ function ScenarioPage() {
             )}
           </Card>
         </Col>
+      </Row>
     </div>
   );
 }
