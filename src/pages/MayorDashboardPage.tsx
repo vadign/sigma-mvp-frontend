@@ -22,6 +22,7 @@ import { YandexTopologyMap } from '../components/maps/YandexTopologyMap';
 import { formatEdgeShortLabel, getDeviationTypeLabel } from '../utils/topologyLabels';
 
 const { RangePicker } = DatePicker;
+const DEFAULT_DATE_RANGE: [Dayjs, Dayjs] = [dayjs('2026-01-01'), dayjs('2026-01-30')];
 
 function MayorDashboardPage() {
   const [events, setEvents] = useState<EventResponse[]>([]);
@@ -29,7 +30,7 @@ function MayorDashboardPage() {
   const [selectedNetwork, setSelectedNetwork] = useState<string | undefined>();
   const [deviations, setDeviations] = useState<DeviationGetResponse[]>([]);
   const [loading, setLoading] = useState(false);
-  const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null]>([null, null]);
+  const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null]>(DEFAULT_DATE_RANGE);
   const [level, setLevel] = useState<1 | 2 | 3 | null>(null);
   const [viewMode, setViewMode] = useState<'deviations' | 'events'>('deviations');
   const [selectedEdgeId, setSelectedEdgeId] = useState<number | null>(null);
