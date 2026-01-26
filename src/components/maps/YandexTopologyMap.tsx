@@ -2,6 +2,13 @@ import { Empty, Spin, message } from 'antd';
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchTopology } from '../../api/client';
 import { EdgeGetResponse, TopologyGetResponse } from '../../api/types';
+import {
+  EdgeMetricKey,
+  formatEdgeLabel,
+  formatEdgeShortLabel,
+  formatNodeLabel,
+  getEdgeMetricLabel,
+} from '../../utils/topologyLabels';
 
 declare global {
   interface Window {
@@ -38,30 +45,21 @@ function formatNumber(value?: number | null) {
 }
 
 function buildEdgeBalloon(edge: EdgeGetResponse) {
-  const metrics: Array<[keyof EdgeGetResponse, string]> = [
-    ['d', 'd'],
-    ['ksi', 'ksi'],
-    ['H', 'H'],
-    ['Q', 'Q'],
-    ['vel', 'vel'],
-    ['Tem', 'Tem'],
-    ['Heat', 'Heat'],
-    ['dP', 'dP'],
-  ];
+  const metrics: EdgeMetricKey[] = ['d', 'ksi', 'H', 'Q', 'vel', 'Tem', 'Heat', 'dP'];
 
   const metricsContent = metrics
-    .map(([key, label]) => {
+    .map((key) => {
       const value = formatNumber(edge[key] as number | null | undefined);
       if (value == null) return null;
-      return `<div>${label}: ${value}</div>`;
+      return `<div>${getEdgeMetricLabel(key)}: ${value}</div>`;
     })
     .filter(Boolean)
     .join('');
 
   return `
     <div>
-      <strong>Ребро ${edge.id}</strong>
-      <div>Из узла: ${edge.id_in} → В узел: ${edge.id_out}</div>
+      <strong>${formatEdgeLabel(edge.id)}</strong>
+      <div>От ${formatNodeLabel(edge.id_in)} → к ${formatNodeLabel(edge.id_out)}</div>
       ${metricsContent}
     </div>
   `;
@@ -200,6 +198,7 @@ export function YandexTopologyMap({
     edgeObjectsRef.current.clear();
     nodesCollectionRef.current = showNodes ? new window.ymaps.GeoObjectCollection() : null;
     const edgesCollection = new window.ymaps.GeoObjectCollection();
+    const edgeLabelsCollection = showEdges ? new window.ymaps.GeoObjectCollection() : null;
 
     if (showEdges) {
       data.edges.forEach((edge) => {
@@ -211,7 +210,7 @@ export function YandexTopologyMap({
           [start, end],
           {
             balloonContent: buildEdgeBalloon(edge),
-            hintContent: `Ребро ${edge.id}`,
+            hintContent: formatEdgeLabel(edge.id),
           },
           {
             strokeColor: '#4a90e2',
@@ -229,17 +228,33 @@ export function YandexTopologyMap({
 
         edgesCollection.add(polyline);
         edgeObjectsRef.current.set(edge.id, polyline);
+
+        if (edgeLabelsCollection) {
+          const midPoint: [number, number] = [
+            (start[0] + end[0]) / 2,
+            (start[1] + end[1]) / 2,
+          ];
+          const labelPlacemark = new window.ymaps.Placemark(
+            midPoint,
+            { iconContent: formatEdgeShortLabel(edge.id) },
+            { preset: 'islands#blueStretchyIcon' },
+          );
+          edgeLabelsCollection.add(labelPlacemark);
+        }
       });
     }
 
     map.geoObjects.add(edgesCollection);
+    if (edgeLabelsCollection) {
+      map.geoObjects.add(edgeLabelsCollection);
+    }
 
     if (showNodes && nodesCollectionRef.current) {
       nodesWithCoords.forEach((node) => {
         const placemark = new window.ymaps.Placemark(
           node.coords,
-          { iconCaption: `УЗ-${node.id}` },
-          { preset: 'islands#blueDotIconWithCaption' },
+          {},
+          { preset: 'islands#blueDotIcon' },
         );
         nodesCollectionRef.current.add(placemark);
       });

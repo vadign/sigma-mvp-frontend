@@ -444,7 +444,7 @@ const RegulationsPage: React.FC = () => {
   };
 
   return (
-    <div>
+    <div className="page-shell">
       <Modal
         open={!!errorModal}
         onCancel={() => setErrorModal(null)}
@@ -484,15 +484,7 @@ const RegulationsPage: React.FC = () => {
         {errorModal?.rawText && (
           <div style={{ marginTop: 12 }}>
             <Typography.Text strong>Текст ответа</Typography.Text>
-            <pre
-              style={{
-                background: '#f5f5f5',
-                padding: 12,
-                borderRadius: 6,
-                marginTop: 6,
-                whiteSpace: 'pre-wrap',
-              }}
-            >
+            <pre className="error-raw">
               {errorModal.rawText}
             </pre>
           </div>
@@ -509,7 +501,9 @@ const RegulationsPage: React.FC = () => {
         </div>
       </Modal>
 
-      <Typography.Title level={2}>Цифровые регламенты</Typography.Title>
+      <Typography.Title level={2} className="page-title">
+        Цифровые регламенты
+      </Typography.Title>
       <Typography.Paragraph type="secondary">
         Правила определяют критичность и формируют рекомендации. Граф валидации задаёт ограничения и проверки структуры
         данных.
@@ -519,19 +513,12 @@ const RegulationsPage: React.FC = () => {
         валидации описывает проверки полноты и корректности данных для подсистем города.
       </Typography.Paragraph>
 
-      {status && (
-        <Alert
-          style={{ marginBottom: 16 }}
-          message={status.text}
-          type={status.type}
-          showIcon
-        />
-      )}
+      {status && <Alert className="status-alert" message={status.text} type={status.type} showIcon />}
 
       <Row gutter={[16, 24]}>
         <Col xs={24} lg={12}>
           <Typography.Title level={4}>База регламентов</Typography.Title>
-          <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', marginTop: 8 }}>
+          <div className="editor-shell">
             <textarea
               ref={dataTextareaRef}
               defaultValue={dataText}
@@ -567,7 +554,7 @@ const RegulationsPage: React.FC = () => {
 
         <Col xs={24} lg={12}>
           <Typography.Title level={4}>Граф валидации</Typography.Title>
-          <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', marginTop: 8 }}>
+          <div className="editor-shell">
             <textarea
               ref={shapesTextareaRef}
               defaultValue={shapesText}
