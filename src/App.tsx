@@ -10,6 +10,7 @@ import {
 } from '@ant-design/icons';
 import { useMemo } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { DemoDataProvider } from './demo/demoState';
 import IntroPage from './pages/IntroPage';
 import DataAndTopologyPage from './pages/DataAndTopologyPage';
 import RegulationsPage from './pages/RegulationsPage';
@@ -83,7 +84,9 @@ function AppLayout() {
 function App() {
   return (
     <BrowserRouter>
-      <AppLayout />
+      <DemoDataProvider>
+        <AppLayout />
+      </DemoDataProvider>
     </BrowserRouter>
   );
 }

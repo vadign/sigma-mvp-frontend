@@ -15,7 +15,8 @@ export const AGENTS: AgentDefinition[] = [
   {
     id: 'heat',
     title: 'Цифровой заместитель: Теплосети',
-    responsibility: 'Контроль отклонений параметров теплосетей и надежности участков',
+    responsibility:
+      'Контроль отклонений параметров теплосетей по цифровому регламенту давления и диаметра, надежность участков',
     keywords: ['тепло', 'теплосеть', 'теплосети', 'heat', 'heating'],
   },
   {
@@ -32,7 +33,7 @@ export const AGENTS: AgentDefinition[] = [
   },
 ];
 
-export const STALE_DATA_THRESHOLD_MINUTES = 20;
+export const STALE_DATA_THRESHOLD_MINUTES = 15;
 
 const CLOSED_STATUSES = ['closed', 'resolved', 'done', 'устранено', 'закрыто'];
 
@@ -74,6 +75,10 @@ export const isEventClosed = (event: EventResponse) => {
 
 export const isEventAttention = (event: EventResponse) => {
   if (isEventClosed(event)) return false;
+  const requiresAttention = event.msg?.requiresAttention;
+  if (typeof requiresAttention === 'boolean') {
+    return requiresAttention;
+  }
   const level = event.msg?.level;
   return level === 1 || level === 2;
 };
@@ -81,7 +86,8 @@ export const isEventAttention = (event: EventResponse) => {
 export const getLastEventAt = (events: EventResponse[]) => {
   if (events.length === 0) return null;
   return events.reduce((latest, event) => {
-    const current = dayjs(event.created_at);
+    const timestamp = event.msg?.updated_at || event.created_at;
+    const current = dayjs(timestamp);
     if (!latest || current.isAfter(latest)) return current;
     return latest;
   }, null as dayjs.Dayjs | null);

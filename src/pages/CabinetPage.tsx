@@ -1,12 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Badge, Button, Card, Space, Table, Tag, Tooltip, Typography, message } from 'antd';
+import { useMemo } from 'react';
+import { Badge, Button, Card, Space, Table, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
-import { fetchEvents } from '../api/client';
-import { EventResponse } from '../api/types';
+import DemoControlPanel from '../components/DemoControlPanel';
+import { useDemoData } from '../demo/demoState';
 import {
-  AGENTS,
   AgentId,
   STALE_DATA_THRESHOLD_MINUTES,
   filterEventsByAgent,
@@ -37,26 +36,18 @@ const resolveStatusBadge = (status: AgentRow['status']) => {
 };
 
 function CabinetPage() {
-  const [events, setEvents] = useState<EventResponse[]>([]);
-  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    setLoading(true);
-    fetchEvents({ limit: 200, order: 'desc' })
-      .then(setEvents)
-      .catch(() => message.error('Не удалось загрузить события'))
-      .finally(() => setLoading(false));
-  }, []);
+  const { agents, events } = useDemoData();
 
   const agentRows = useMemo<AgentRow[]>(() => {
-    return AGENTS.map((agent) => {
+    return agents.map((agent) => {
       const scopedEvents = filterEventsByAgent(events, agent.id);
       const attentionCount = scopedEvents.filter(isEventAttention).length;
       const lastEventAt = getLastEventAt(scopedEvents);
       const minutesAgo = lastEventAt ? dayjs().diff(lastEventAt, 'minute') : null;
       const isStale = minutesAgo == null || minutesAgo > STALE_DATA_THRESHOLD_MINUTES;
-      const status: AgentRow['status'] = agent.paused
+      const status: AgentRow['status'] = agent.isPaused
         ? 'Приостановлен'
         : isStale
           ? 'Не получает данные'
@@ -70,8 +61,8 @@ function CabinetPage() {
 
       return {
         id: agent.id,
-        title: agent.title,
-        responsibility: agent.responsibility,
+        title: agent.name,
+        responsibility: agent.responsibilityZone,
         attentionCount,
         status,
         updatedAtLabel,
@@ -79,7 +70,7 @@ function CabinetPage() {
       };
     })
       .sort((a, b) => b.attentionCount - a.attentionCount);
-  }, [events]);
+  }, [agents, events]);
 
   const columns: ColumnsType<AgentRow> = [
     {
@@ -144,13 +135,14 @@ function CabinetPage() {
         </Typography.Paragraph>
       </div>
 
+      <DemoControlPanel />
+
       <Card>
         <Space direction="vertical" style={{ width: '100%' }} size="middle">
           <Table
             rowKey="id"
             dataSource={agentRows}
             columns={columns}
-            loading={loading}
             pagination={false}
           />
           <Typography.Text type="secondary">
