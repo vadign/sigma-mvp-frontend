@@ -1,4 +1,41 @@
-import { useMemo, useState } from 'react';
+import { DemoActionLogEntry, DemoTaskDecision, HEAT_REGULATION } from '../demo/demoData';
+const METRIC_PALETTE = [
+  { line: '#36cfc9', fill: 'rgba(54, 207, 201, 0.24)', surface: '#e6fffb' },
+  { line: '#597ef7', fill: 'rgba(89, 126, 247, 0.22)', surface: '#f0f5ff' },
+  { line: '#f759ab', fill: 'rgba(247, 89, 171, 0.22)', surface: '#fff0f6' },
+  { line: '#fa8c16', fill: 'rgba(250, 140, 22, 0.2)', surface: '#fff7e6' },
+];
+
+const formatMetricValue = (value: number) => {
+  if (!Number.isFinite(value)) return '—';
+  const abs = Math.abs(value);
+  if (abs >= 100) return Math.round(value).toString();
+  if (abs >= 10) return value.toFixed(1).replace(/\.0$/, '');
+  return value.toFixed(2).replace(/\.0+$/, '').replace(/(\.\d)0$/, '$1');
+};
+
+const buildSparklinePaths = (values: number[]) => {
+  if (values.length === 0) return { line: '', area: '' };
+  const safeValues = values.length > 1 ? values : [values[0], values[0]];
+  const width = 100;
+  const height = 60;
+  const padding = 6;
+  const min = Math.min(...safeValues);
+  const max = Math.max(...safeValues);
+  const range = max - min || 1;
+  const bottom = height - padding;
+  const points = safeValues.map((value, index) => {
+    const x = (index / (safeValues.length - 1)) * width;
+    const y = bottom - ((value - min) / range) * (height - padding * 2);
+    return { x, y };
+  });
+  const line = points
+    .map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x},${point.y}`)
+    .join(' ');
+  const area = `M0,${bottom} ${points.map((point) => `L${point.x},${point.y}`).join(' ')} L${width},${bottom} Z`;
+  return { line, area };
+};
+
 import { Badge, Card, Col, Empty, Row, Select, Space, Statistic, Table, Tabs, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
@@ -226,24 +263,34 @@ function AgentPage() {
       title: 'Тип',
       dataIndex: 'actionType',
       render: (value: DemoActionLogEntry['actionType']) => (
-        <Tag color="blue">{resolveActionTypeLabel(value)}</Tag>
-      ),
-    },
-    {
-      title: 'Описание',
-      dataIndex: 'summary',
-    },
-    {
-      title: 'Результат',
-      dataIndex: 'resultStatus',
-      render: (value: DemoActionLogEntry['resultStatus']) => {
-        const meta = resolveResultStatus(value);
-        return <Tag color={meta.color}>{meta.label}</Tag>;
-      },
-    },
-    {
-      title: 'Событие',
-      dataIndex: 'relatedEventId',
+  const metricsDashboard = useMemo(() => {
+    if (!series || series.length === 0) return [];
+    const metrics = Object.keys(series[0].values ?? {});
+    return metrics.map((metric, index) => {
+      const values = series
+        .map((point) => Number(point.values[metric] ?? 0))
+        .filter((value) => Number.isFinite(value));
+      const safeValues = values.length > 0 ? values : [0];
+      const current = safeValues[safeValues.length - 1] ?? 0;
+      const previous = safeValues[safeValues.length - 2] ?? current;
+      const delta = current - previous;
+      const avg = safeValues.reduce((sum, value) => sum + value, 0) / safeValues.length;
+      const min = Math.min(...safeValues);
+      const max = Math.max(...safeValues);
+      const palette = METRIC_PALETTE[index % METRIC_PALETTE.length];
+      const paths = buildSparklinePaths(safeValues);
+      return {
+        metric,
+        values: safeValues,
+        current,
+        delta,
+        avg,
+        min,
+        max,
+        palette,
+        paths,
+      };
+    });
       align: 'center',
       render: (value: number) => <Tag>{`#${value}`}</Tag>,
     },
@@ -502,3 +549,43 @@ function AgentPage() {
 }
 
 export default AgentPage;
+                    {metricsDashboard.length > 0 ? (
+                      <div className="metrics-dashboard">
+                        {metricsDashboard.map((metric) => {
+                          const deltaLabel = `${metric.delta >= 0 ? '+' : ''}${formatMetricValue(metric.delta)}`;
+                          const deltaColor = metric.delta > 0 ? 'green' : metric.delta < 0 ? 'red' : 'default';
+                          return (
+                            <div
+                              key={metric.metric}
+                              className="metric-card"
+                              style={{
+                                background: `linear-gradient(135deg, ${metric.palette.surface} 0%, #ffffff 70%)`,
+                                borderColor: metric.palette.surface,
+                              }}
+                            >
+                              <div className="metric-card-header">
+                                <Typography.Text strong>{metric.metric}</Typography.Text>
+                                <Tag color={deltaColor}>{deltaLabel}</Tag>
+                              </div>
+                              <div className="metric-card-body">
+                                <Typography.Text className="metric-card-value">
+                                  {formatMetricValue(metric.current)}
+                                </Typography.Text>
+                                <Typography.Text className="metric-card-sub" type="secondary">
+                                  Мин {formatMetricValue(metric.min)} · Макс {formatMetricValue(metric.max)} · Ср{' '}
+                                  {formatMetricValue(metric.avg)}
+                                </Typography.Text>
+                              </div>
+                              <svg className="metric-sparkline" viewBox="0 0 100 60" preserveAspectRatio="none">
+                                <path d={metric.paths.area} fill={metric.palette.fill} stroke="none" />
+                                <path
+                                  d={metric.paths.line}
+                                  fill="none"
+                                  stroke={metric.palette.line}
+                                  strokeWidth="2"
+                                />
+                              </svg>
+                            </div>
+                          );
+                        })}
+                      </div>
