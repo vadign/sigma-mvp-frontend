@@ -5,6 +5,7 @@ import dayjs from 'dayjs';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import EventsTable from '../components/EventsTable';
+import RegulationsPanel from '../components/RegulationsPanel';
 import { DemoActionLogEntry, DemoTaskDecision, DemoTimeseriesPoint, HEAT_REGULATION } from '../demo/demoData';
 import { useDemoData } from '../demo/demoState';
 import {
@@ -774,6 +775,15 @@ function AgentPage() {
               </Space>
             ),
           },
+          ...(isHeatAgent
+            ? [
+                {
+                  key: 'regulations',
+                  label: 'Регламенты',
+                  children: <RegulationsPanel />,
+                },
+              ]
+            : []),
           {
             key: 'registry',
             label: 'Реестр событий',
