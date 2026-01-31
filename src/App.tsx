@@ -24,7 +24,7 @@ const { Header, Content } = Layout;
 
 const tabs = [
   { key: 'cabinet', label: 'Личный кабинет', icon: <UserOutlined />, path: '/cabinet' },
-  { key: 'intro', label: 'Вступление', icon: <InfoCircleOutlined />, path: '/intro' },
+  { key: 'intro', label: 'Вступление', icon: <InfoCircleOutlined />, path: '/intro', hidden: true },
   { key: 'topology', label: 'Топология и отклонения', icon: <ApartmentOutlined />, path: '/topology' },
   { key: 'regulations', label: 'Регламенты', icon: <FileProtectOutlined />, path: '/regulations' },
   { key: 'mayor', label: 'Дашборд мэра', icon: <CrownOutlined />, path: '/mayor' },
@@ -35,6 +35,7 @@ const tabs = [
 function AppLayout() {
   const location = useLocation();
   const navigate = useNavigate();
+  const visibleTabs = useMemo(() => tabs.filter((tab) => !tab.hidden), []);
 
   const activeKey = useMemo(() => {
     const path = location.pathname;
@@ -58,10 +59,10 @@ function AppLayout() {
           mode="horizontal"
           selectedKeys={[activeKey]}
           onClick={(e) => {
-            const target = tabs.find((tab) => tab.key === e.key);
+            const target = visibleTabs.find((tab) => tab.key === e.key);
             if (target) navigate(target.path);
           }}
-          items={tabs.map(({ key, label, icon }) => ({ key, label, icon }))}
+          items={visibleTabs.map(({ key, label, icon }) => ({ key, label, icon }))}
           className="app-menu"
         />
       </Header>

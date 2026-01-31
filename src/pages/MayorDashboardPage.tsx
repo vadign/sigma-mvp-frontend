@@ -22,7 +22,7 @@ import { YandexTopologyMap } from '../components/maps/YandexTopologyMap';
 import { formatEdgeShortLabel, getDeviationTypeLabel } from '../utils/topologyLabels';
 
 const { RangePicker } = DatePicker;
-const DEFAULT_DATE_RANGE: [Dayjs, Dayjs] = [dayjs('2026-01-01'), dayjs('2026-01-30')];
+const DEFAULT_DATE_RANGE: [Dayjs, Dayjs] = [dayjs('2026-02-01'), dayjs('2026-02-28')];
 
 function MayorDashboardPage() {
   const [events, setEvents] = useState<EventResponse[]>([]);
