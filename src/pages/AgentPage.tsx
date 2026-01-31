@@ -3,6 +3,7 @@ import { Badge, Card, Col, Empty, Row, Select, Space, Statistic, Table, Tabs, Ta
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { useNavigate, useParams } from 'react-router-dom';
+import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import EventsTable from '../components/EventsTable';
 import { DemoActionLogEntry, DemoTaskDecision, DemoTimeseriesPoint, HEAT_REGULATION } from '../demo/demoData';
 import { useDemoData } from '../demo/demoState';
@@ -30,26 +31,9 @@ const formatMetricValue = (value: number) => {
   return value.toFixed(2).replace(/\.0+$/, '').replace(/(\.\d)0$/, '$1');
 };
 
-const buildSparklinePaths = (values: number[]) => {
-  if (values.length === 0) return { line: '', area: '' };
-  const safeValues = values.length > 1 ? values : [values[0], values[0]];
-  const width = 100;
-  const height = 60;
-  const padding = 6;
-  const min = Math.min(...safeValues);
-  const max = Math.max(...safeValues);
-  const range = max - min || 1;
-  const bottom = height - padding;
-  const points = safeValues.map((value, index) => {
-    const x = (index / (safeValues.length - 1)) * width;
-    const y = bottom - ((value - min) / range) * (height - padding * 2);
-    return { x, y };
-  });
-  const line = points
-    .map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x},${point.y}`)
-    .join(' ');
-  const area = `M0,${bottom} ${points.map((point) => `L${point.x},${point.y}`).join(' ')} L${width},${bottom} Z`;
-  return { line, area };
+const formatTooltipValue = (value: number | null | undefined) => {
+  if (value == null || !Number.isFinite(value)) return '—';
+  return formatMetricValue(value);
 };
 
 const resolveActionTypeLabel = (actionType: DemoActionLogEntry['actionType']) => {
@@ -361,9 +345,7 @@ function AgentPage() {
     if (!series || series.length === 0) return [];
     const metrics = Object.keys(series[0].values ?? {});
     return metrics.map((metric, index) => {
-      const values = series
-        .map((point) => Number(point.values[metric] ?? 0))
-        .filter((value) => Number.isFinite(value));
+      const values = series.map((point) => Number(point.values[metric] ?? 0)).filter((value) => Number.isFinite(value));
       const safeValues = values.length > 0 ? values : [0];
       const current = safeValues[safeValues.length - 1] ?? 0;
       const previous = safeValues[safeValues.length - 2] ?? current;
@@ -372,7 +354,11 @@ function AgentPage() {
       const min = Math.min(...safeValues);
       const max = Math.max(...safeValues);
       const palette = METRIC_PALETTE[index % METRIC_PALETTE.length];
-      const paths = buildSparklinePaths(safeValues);
+      const chartData = series.map((point, idx) => ({
+        index: idx,
+        value: Number.isFinite(Number(point.values[metric])) ? Number(point.values[metric]) : null,
+        label: dayjs(point.timestamp).format('HH:mm'),
+      }));
       return {
         metric,
         values: safeValues,
@@ -382,10 +368,24 @@ function AgentPage() {
         min,
         max,
         palette,
-        paths,
+        chartData,
       };
     });
   }, [series]);
+
+  const renderMetricTooltip = (props: {
+    active?: boolean;
+    payload?: Array<{ value?: number | null; payload?: { label?: string } }>;
+  }) => {
+    if (!props.active || !props.payload || props.payload.length === 0) return null;
+    const entry = props.payload[0];
+    return (
+      <div className="metric-tooltip">
+        <Typography.Text type="secondary">{entry.payload?.label ?? '—'}</Typography.Text>
+        <Typography.Text strong>{formatTooltipValue(entry.value)}</Typography.Text>
+      </div>
+    );
+  };
 
   const actionLogColumns: ColumnsType<DemoActionLogEntry> = [
     {
@@ -703,9 +703,10 @@ function AgentPage() {
                   <Space direction="vertical" size="large" style={{ width: '100%' }}>
                     {metricsDashboard.length > 0 && (
                       <div className="metrics-dashboard">
-                        {metricsDashboard.map((metric) => {
+                        {metricsDashboard.map((metric, index) => {
                           const deltaLabel = `${metric.delta >= 0 ? '+' : ''}${formatMetricValue(metric.delta)}`;
                           const deltaColor = metric.delta > 0 ? 'green' : metric.delta < 0 ? 'red' : 'default';
+                          const gradientId = `metric-gradient-${index}`;
                           return (
                             <div
                               key={metric.metric}
@@ -728,15 +729,30 @@ function AgentPage() {
                                   {formatMetricValue(metric.avg)}
                                 </Typography.Text>
                               </div>
-                              <svg className="metric-sparkline" viewBox="0 0 100 60" preserveAspectRatio="none">
-                                <path d={metric.paths.area} fill={metric.palette.fill} stroke="none" />
-                                <path
-                                  d={metric.paths.line}
-                                  fill="none"
-                                  stroke={metric.palette.line}
-                                  strokeWidth="2"
-                                />
-                              </svg>
+                              <div className="metric-sparkline">
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <AreaChart data={metric.chartData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                                    <defs>
+                                      <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor={metric.palette.line} stopOpacity={0.35} />
+                                        <stop offset="100%" stopColor={metric.palette.line} stopOpacity={0.05} />
+                                      </linearGradient>
+                                    </defs>
+                                    <XAxis dataKey="index" hide />
+                                    <YAxis hide domain={['auto', 'auto']} />
+                                    <Tooltip content={renderMetricTooltip} cursor={{ stroke: metric.palette.line, strokeDasharray: '3 3' }} />
+                                    <Area
+                                      type="monotone"
+                                      dataKey="value"
+                                      stroke={metric.palette.line}
+                                      strokeWidth={2}
+                                      fill={`url(#${gradientId})`}
+                                      dot={false}
+                                      activeDot={{ r: 4 }}
+                                    />
+                                  </AreaChart>
+                                </ResponsiveContainer>
+                              </div>
                             </div>
                           );
                         })}
@@ -852,9 +868,10 @@ function AgentPage() {
                     <Typography.Text strong>Динамика показателей за 24 часа</Typography.Text>
                     {metricsDashboard.length > 0 && (
                       <div className="metrics-dashboard">
-                        {metricsDashboard.map((metric) => {
+                        {metricsDashboard.map((metric, index) => {
                           const deltaLabel = `${metric.delta >= 0 ? '+' : ''}${formatMetricValue(metric.delta)}`;
                           const deltaColor = metric.delta > 0 ? 'green' : metric.delta < 0 ? 'red' : 'default';
+                          const gradientId = `metric-gradient-secondary-${index}`;
                           return (
                             <div
                               key={metric.metric}
@@ -877,15 +894,30 @@ function AgentPage() {
                                   {formatMetricValue(metric.avg)}
                                 </Typography.Text>
                               </div>
-                              <svg className="metric-sparkline" viewBox="0 0 100 60" preserveAspectRatio="none">
-                                <path d={metric.paths.area} fill={metric.palette.fill} stroke="none" />
-                                <path
-                                  d={metric.paths.line}
-                                  fill="none"
-                                  stroke={metric.palette.line}
-                                  strokeWidth="2"
-                                />
-                              </svg>
+                              <div className="metric-sparkline">
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <AreaChart data={metric.chartData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                                    <defs>
+                                      <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor={metric.palette.line} stopOpacity={0.35} />
+                                        <stop offset="100%" stopColor={metric.palette.line} stopOpacity={0.05} />
+                                      </linearGradient>
+                                    </defs>
+                                    <XAxis dataKey="index" hide />
+                                    <YAxis hide domain={['auto', 'auto']} />
+                                    <Tooltip content={renderMetricTooltip} cursor={{ stroke: metric.palette.line, strokeDasharray: '3 3' }} />
+                                    <Area
+                                      type="monotone"
+                                      dataKey="value"
+                                      stroke={metric.palette.line}
+                                      strokeWidth={2}
+                                      fill={`url(#${gradientId})`}
+                                      dot={false}
+                                      activeDot={{ r: 4 }}
+                                    />
+                                  </AreaChart>
+                                </ResponsiveContainer>
+                              </div>
                             </div>
                           );
                         })}
