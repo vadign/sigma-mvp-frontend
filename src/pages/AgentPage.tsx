@@ -6,7 +6,13 @@ import { useNavigate, useParams } from 'react-router-dom';
 import EventsTable from '../components/EventsTable';
 import { DemoActionLogEntry, DemoTaskDecision, DemoTimeseriesPoint, HEAT_REGULATION } from '../demo/demoData';
 import { useDemoData } from '../demo/demoState';
-import { STALE_DATA_THRESHOLD_MINUTES, filterEventsByAgent, getLastEventAt, isEventAttention } from '../utils/agents';
+import {
+  STALE_DATA_THRESHOLD_MINUTES,
+  filterEventsByAgent,
+  getLastEventAt,
+  isEventAttention,
+  isEventClosed,
+} from '../utils/agents';
 import { getSeverityMeta } from '../utils/severity';
 
 const METRIC_PALETTE = [
@@ -111,9 +117,11 @@ const resolveStatusBadge = (status: 'Активен' | 'Не получает д
 function AgentPage() {
   const { agentId } = useParams();
   const navigate = useNavigate();
-  const { agents, events, actionLog, tasksDecisions, timeseries } = useDemoData();
+  const { now, agents, events, actionLog, tasksDecisions, timeseries } = useDemoData();
   const agent = agents.find((item) => item.id === agentId) ?? null;
   const [selectedDomain, setSelectedDomain] = useState<string>('all');
+  const [eventFilter, setEventFilter] = useState<'all' | 'active' | 'critical' | 'attention'>('all');
+  const [activeTab, setActiveTab] = useState<string>('dashboard');
 
   const scopedEvents = useMemo(() => {
     if (!agent) return [];
@@ -139,19 +147,63 @@ function AgentPage() {
     [scopedEvents],
   );
 
+  const attentionCount = useMemo(
+    () =>
+      scopedEvents.filter(
+        (event) => event.msg?.requiresAttention === true && !isEventClosed(event),
+      ).length,
+    [scopedEvents],
+  );
+
   const actionLogByAgent = useMemo(
     () => actionLog.filter((entry) => entry.agentId === agent?.id),
     [actionLog, agent?.id],
   );
+
+  const lastActionAt = useMemo(() => {
+    if (actionLogByAgent.length === 0) return null;
+    return actionLogByAgent.reduce((latest, entry) => {
+      const timestamp = dayjs(entry.timestamp);
+      if (!latest || timestamp.isAfter(latest)) return timestamp;
+      return latest;
+    }, null as dayjs.Dayjs | null);
+  }, [actionLogByAgent]);
 
   const tasksByAgent = useMemo(
     () => tasksDecisions.filter((task) => task.agentId === agent?.id),
     [tasksDecisions, agent?.id],
   );
 
+  const tasksInWorkCount = useMemo(
+    () => tasksByAgent.filter((task) => task.status === 'Created' || task.status === 'InProgress').length,
+    [tasksByAgent],
+  );
+
+  const overdueTasksCount = useMemo(
+    () =>
+      tasksByAgent.filter((task) => {
+        const isOverdueByStatus = task.status === 'Overdue';
+        const isOverdueByDate = dayjs(task.dueAt).isBefore(dayjs(now)) && task.status !== 'Done';
+        return isOverdueByStatus || isOverdueByDate;
+      }).length,
+    [tasksByAgent, now],
+  );
+
+  const taskStatusCounts = useMemo(
+    () =>
+      tasksByAgent.reduce(
+        (acc, task) => {
+          acc[task.status] += 1;
+          return acc;
+        },
+        { Created: 0, InProgress: 0, Done: 0, Overdue: 0 } as Record<DemoTaskDecision['status'], number>,
+      ),
+    [tasksByAgent],
+  );
+
   const kpi = useMemo(() => {
     const active = activeEvents.length;
-    const critical = activeEvents.filter((event) => event.msg?.level === 1).length;
+    const critical = activeEvents.filter((event) => event.msg?.level === 1 || event.msg?.level === 2).length;
     const attention = attentionEvents.length;
 
     const responseTimes = scopedEvents
@@ -188,14 +240,16 @@ function AgentPage() {
     return { active, critical, attention, avgResponse, avgResolution };
   }, [activeEvents, attentionEvents, scopedEvents, actionLogByAgent, resolvedEvents]);
 
+  const lastEventAt = useMemo(() => getLastEventAt(scopedEvents), [scopedEvents]);
+  const lastDataAt = useMemo(() => lastEventAt ?? lastActionAt, [lastEventAt, lastActionAt]);
+
   const statusLabel = useMemo(() => {
     if (!agent) return 'Приостановлен';
     if (agent.isPaused) return 'Приостановлен';
-    const lastEventAt = getLastEventAt(scopedEvents);
-    const minutesAgo = lastEventAt ? dayjs().diff(lastEventAt, 'minute') : null;
+    const minutesAgo = lastDataAt ? dayjs(now).diff(lastDataAt, 'minute') : null;
     const isStale = minutesAgo == null || minutesAgo > STALE_DATA_THRESHOLD_MINUTES;
     return isStale ? 'Не получает данные' : 'Активен';
-  }, [agent, scopedEvents]);
+  }, [agent, lastDataAt, now]);
 
   const domains = useMemo(() => {
     const unique = new Set<string>();
@@ -209,17 +263,50 @@ function AgentPage() {
   }, [scopedEvents]);
 
   const filteredEvents = useMemo(() => {
-    if (selectedDomain === 'all') return scopedEvents;
-    return scopedEvents.filter((event) => event.msg?.domain === selectedDomain);
-  }, [scopedEvents, selectedDomain]);
+    const domainFiltered =
+      selectedDomain === 'all'
+        ? scopedEvents
+        : scopedEvents.filter((event) => event.msg?.domain === selectedDomain);
+    switch (eventFilter) {
+      case 'active':
+        return domainFiltered.filter((event) => {
+          const status = event.msg?.status;
+          return status === 'New' || status === 'InProgress';
+        });
+      case 'critical':
+        return domainFiltered.filter((event) => event.msg?.level === 1 || event.msg?.level === 2);
+      case 'attention':
+        return domainFiltered.filter((event) => event.msg?.requiresAttention === true && !isEventClosed(event));
+      case 'all':
+      default:
+        return domainFiltered;
+    }
+  }, [scopedEvents, selectedDomain, eventFilter]);
 
   const attentionRegistry = useMemo(
     () => scopedEvents.filter((event) => event.msg?.requiresAttention === true),
     [scopedEvents],
   );
 
+  const recentActions = useMemo(() => {
+    return [...actionLogByAgent]
+      .sort((a, b) => dayjs(b.timestamp).diff(dayjs(a.timestamp)))
+      .slice(0, 10);
+  }, [actionLogByAgent]);
+
+  const tasksByDueDate = useMemo(() => {
+    return [...tasksByAgent]
+      .sort((a, b) => dayjs(a.dueAt).diff(dayjs(b.dueAt)))
+      .slice(0, 8);
+  }, [tasksByAgent]);
+
+  const lastDayEvents = useMemo(() => {
+    const since = dayjs(now).subtract(24, 'hour');
+    return scopedEvents.filter((event) => dayjs(event.created_at).isAfter(since));
+  }, [scopedEvents, now]);
+
   const problemZones = useMemo(() => {
-    const counts = scopedEvents.reduce<Record<string, number>>((acc, event) => {
+    const counts = lastDayEvents.reduce<Record<string, number>>((acc, event) => {
       const address = event.msg?.location?.address;
       if (!address) return acc;
       acc[address] = (acc[address] ?? 0) + 1;
@@ -227,9 +314,27 @@ function AgentPage() {
     }, {});
     return Object.entries(counts)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
+      .slice(0, 5)
       .map(([address, count]) => ({ address, count }));
-  }, [scopedEvents]);
+  }, [lastDayEvents]);
+
+  const repeatabilityStats = useMemo(() => {
+    const counts = lastDayEvents.reduce<Record<string, number>>((acc, event) => {
+      const address = event.msg?.location?.address ?? 'Без адреса';
+      const title = event.msg?.title ?? 'Без названия';
+      const key = `${address}::${title}`;
+      acc[key] = (acc[key] ?? 0) + 1;
+      return acc;
+    }, {});
+    return Object.entries(counts)
+      .filter(([, count]) => count > 1)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([key, count]) => {
+        const [address, title] = key.split('::');
+        return { address, title, count };
+      });
+  }, [lastDayEvents]);
 
   const series = timeseries[agent?.id as keyof typeof timeseries];
   const timeseriesColumns = useMemo<ColumnsType<DemoTimeseriesPoint>>(() => {
@@ -313,6 +418,31 @@ function AgentPage() {
     },
   ];
 
+  const dashboardActionColumns: ColumnsType<DemoActionLogEntry> = [
+    {
+      title: 'Время',
+      dataIndex: 'timestamp',
+      render: (value: string) => dayjs(value).format('DD.MM HH:mm'),
+    },
+    {
+      title: 'Тип',
+      dataIndex: 'actionType',
+      render: (value: DemoActionLogEntry['actionType']) => (
+        <Tag color="blue">{resolveActionTypeLabel(value)}</Tag>
+      ),
+    },
+    {
+      title: 'Описание',
+      dataIndex: 'summary',
+    },
+    {
+      title: 'Событие',
+      dataIndex: 'relatedEventId',
+      align: 'center',
+      render: (value: number) => <Tag>{`#${value}`}</Tag>,
+    },
+  ];
+
   const taskColumns: ColumnsType<DemoTaskDecision> = [
     {
       title: 'Решение / поручение',
@@ -355,6 +485,15 @@ function AgentPage() {
     },
   ];
 
+  const handleEventNavigation = (filter: 'all' | 'active' | 'critical' | 'attention') => {
+    setEventFilter(filter);
+    setActiveTab('registry');
+  };
+
+  const handleTaskNavigation = () => {
+    setActiveTab('tasks');
+  };
+
   if (!agent) {
     return (
       <div className="page-shell">
@@ -371,8 +510,7 @@ function AgentPage() {
     );
   }
 
-  const lastEventAt = getLastEventAt(scopedEvents);
-  const updatedLabel = lastEventAt ? lastEventAt.format('DD.MM.YYYY HH:mm') : '—';
+  const updatedLabel = lastDataAt ? lastDataAt.format('DD.MM.YYYY HH:mm') : '—';
   const isHeatAgent = agent.id === 'heat';
 
   return (
@@ -411,41 +549,215 @@ function AgentPage() {
         </Card>
       )}
 
-      <Row gutter={[16, 16]}>
-        <Col xs={24} md={6}>
-          <Card>
-            <Statistic title="Активные инциденты" value={kpi.active} />
-          </Card>
-        </Col>
-        <Col xs={24} md={6}>
-          <Card>
-            <Statistic
-              title="Критичные инциденты"
-              value={kpi.critical}
-              valueStyle={{ color: getSeverityMeta(1).color }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} md={6}>
-          <Card>
-            <Statistic title="Требуют вмешательства" value={kpi.attention} />
-          </Card>
-        </Col>
-        <Col xs={24} md={6}>
-          <Card>
-            <Statistic title="Среднее время реакции" value={formatDuration(kpi.avgResponse)} />
-          </Card>
-        </Col>
-        <Col xs={24} md={6}>
-          <Card>
-            <Statistic title="Среднее время устранения" value={formatDuration(kpi.avgResolution)} />
-          </Card>
-        </Col>
-      </Row>
-
       <Tabs
-        defaultActiveKey="registry"
+        activeKey={activeTab}
+        onChange={setActiveTab}
         items={[
+          {
+            key: 'dashboard',
+            label: 'Дашборд',
+            children: (
+              <Space direction="vertical" size="large" style={{ width: '100%' }}>
+                <Card>
+                  <Row gutter={[16, 16]} align="middle">
+                    <Col xs={24} md={8}>
+                      <Space direction="vertical" size={4}>
+                        <Typography.Text strong>{agent.name}</Typography.Text>
+                        <Typography.Text type="secondary">{agent.responsibilityZone}</Typography.Text>
+                      </Space>
+                    </Col>
+                    <Col xs={24} md={6}>
+                      <Space direction="vertical" size={4}>
+                        <Typography.Text type="secondary">Статус</Typography.Text>
+                        {resolveStatusBadge(statusLabel)}
+                      </Space>
+                    </Col>
+                    <Col xs={24} md={5}>
+                      <Space direction="vertical" size={4}>
+                        <Typography.Text type="secondary">Последние данные</Typography.Text>
+                        <Typography.Text>{updatedLabel}</Typography.Text>
+                      </Space>
+                    </Col>
+                    <Col xs={24} md={5}>
+                      <Space direction="vertical" size={4}>
+                        <Typography.Text type="secondary">Требуют внимания</Typography.Text>
+                        <Typography.Link onClick={() => handleEventNavigation('attention')}>
+                          {attentionCount}
+                        </Typography.Link>
+                      </Space>
+                    </Col>
+                  </Row>
+                </Card>
+
+                <Row gutter={[16, 16]}>
+                  <Col xs={24} md={8} lg={4}>
+                    <Card hoverable onClick={() => handleEventNavigation('active')}>
+                      <Statistic title="Активные инциденты" value={kpi.active} />
+                    </Card>
+                  </Col>
+                  <Col xs={24} md={8} lg={4}>
+                    <Card hoverable onClick={() => handleEventNavigation('critical')}>
+                      <Statistic
+                        title="Критичные инциденты"
+                        value={kpi.critical}
+                        valueStyle={{ color: getSeverityMeta(1).color }}
+                      />
+                    </Card>
+                  </Col>
+                  <Col xs={24} md={8} lg={4}>
+                    <Card hoverable onClick={() => handleEventNavigation('attention')}>
+                      <Statistic title="Требуют вмешательства" value={kpi.attention} />
+                    </Card>
+                  </Col>
+                  <Col xs={24} md={8} lg={4}>
+                    <Card hoverable onClick={handleTaskNavigation}>
+                      <Statistic title="Поручения в работе" value={tasksInWorkCount} />
+                    </Card>
+                  </Col>
+                  <Col xs={24} md={8} lg={4}>
+                    <Card hoverable onClick={handleTaskNavigation}>
+                      <Statistic title="Просрочено поручений" value={overdueTasksCount} />
+                    </Card>
+                  </Col>
+                  <Col xs={24} md={8} lg={4}>
+                    <Card>
+                      <Statistic title="Среднее время реакции" value={formatDuration(kpi.avgResponse)} />
+                    </Card>
+                  </Col>
+                </Row>
+
+                <Card title="Активность помощника">
+                  {recentActions.length > 0 ? (
+                    <Table
+                      rowKey="id"
+                      columns={dashboardActionColumns}
+                      dataSource={recentActions}
+                      pagination={false}
+                      size="small"
+                    />
+                  ) : (
+                    <Empty description="Нет данных по последним действиям" />
+                  )}
+                </Card>
+
+                <Card title="Контроль исполнения">
+                  <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                    <Space wrap>
+                      <Tag color="blue">{`Создано: ${taskStatusCounts.Created}`}</Tag>
+                      <Tag color="gold">{`В работе: ${taskStatusCounts.InProgress}`}</Tag>
+                      <Tag color="green">{`Выполнено: ${taskStatusCounts.Done}`}</Tag>
+                      <Tag color="red">{`Просрочено: ${taskStatusCounts.Overdue}`}</Tag>
+                    </Space>
+                    {tasksByDueDate.length > 0 ? (
+                      <Table
+                        rowKey="id"
+                        columns={taskColumns}
+                        dataSource={tasksByDueDate}
+                        pagination={false}
+                        size="small"
+                      />
+                    ) : (
+                      <Empty description="Нет данных по поручениям" />
+                    )}
+                  </Space>
+                </Card>
+
+                <Row gutter={[16, 16]}>
+                  <Col xs={24} lg={12}>
+                    <Card title="Топ проблемных локаций (24 часа)">
+                      {problemZones.length > 0 ? (
+                        <Space direction="vertical">
+                          {problemZones.map((zone) => (
+                            <Space key={zone.address}>
+                              <Tag color={zone.count > 2 ? 'red' : 'blue'}>{zone.count}</Tag>
+                              <Typography.Text>{zone.address}</Typography.Text>
+                            </Space>
+                          ))}
+                        </Space>
+                      ) : (
+                        <Empty description="Нет проблемных локаций" />
+                      )}
+                    </Card>
+                  </Col>
+                  <Col xs={24} lg={12}>
+                    <Card title="Повторяемость событий (24 часа)">
+                      {repeatabilityStats.length > 0 ? (
+                        <Space direction="vertical">
+                          {repeatabilityStats.map((item) => (
+                            <Space key={`${item.address}-${item.title}`}>
+                              <Tag color={item.count > 2 ? 'red' : 'orange'}>{item.count}</Tag>
+                              <Typography.Text>
+                                {item.title} · {item.address}
+                              </Typography.Text>
+                            </Space>
+                          ))}
+                        </Space>
+                      ) : (
+                        <Empty description="Повторяемость не выявлена" />
+                      )}
+                    </Card>
+                  </Col>
+                </Row>
+
+                <Card title="Динамика показателей за 24 часа">
+                  <Space direction="vertical" size="large" style={{ width: '100%' }}>
+                    {metricsDashboard.length > 0 && (
+                      <div className="metrics-dashboard">
+                        {metricsDashboard.map((metric) => {
+                          const deltaLabel = `${metric.delta >= 0 ? '+' : ''}${formatMetricValue(metric.delta)}`;
+                          const deltaColor = metric.delta > 0 ? 'green' : metric.delta < 0 ? 'red' : 'default';
+                          return (
+                            <div
+                              key={metric.metric}
+                              className="metric-card"
+                              style={{
+                                background: `linear-gradient(135deg, ${metric.palette.surface} 0%, #ffffff 70%)`,
+                                borderColor: metric.palette.surface,
+                              }}
+                            >
+                              <div className="metric-card-header">
+                                <Typography.Text strong>{metric.metric}</Typography.Text>
+                                <Tag color={deltaColor}>{deltaLabel}</Tag>
+                              </div>
+                              <div className="metric-card-body">
+                                <Typography.Text className="metric-card-value">
+                                  {formatMetricValue(metric.current)}
+                                </Typography.Text>
+                                <Typography.Text className="metric-card-sub" type="secondary">
+                                  Мин {formatMetricValue(metric.min)} · Макс {formatMetricValue(metric.max)} · Ср{' '}
+                                  {formatMetricValue(metric.avg)}
+                                </Typography.Text>
+                              </div>
+                              <svg className="metric-sparkline" viewBox="0 0 100 60" preserveAspectRatio="none">
+                                <path d={metric.paths.area} fill={metric.palette.fill} stroke="none" />
+                                <path
+                                  d={metric.paths.line}
+                                  fill="none"
+                                  stroke={metric.palette.line}
+                                  strokeWidth="2"
+                                />
+                              </svg>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {series && series.length > 0 ? (
+                      <Table
+                        rowKey="timestamp"
+                        columns={timeseriesColumns}
+                        dataSource={series}
+                        pagination={false}
+                        size="small"
+                      />
+                    ) : (
+                      <Empty description="Нет данных по динамике" />
+                    )}
+                  </Space>
+                </Card>
+              </Space>
+            ),
+          },
           {
             key: 'registry',
             label: 'Реестр событий',
@@ -461,6 +773,18 @@ function AgentPage() {
                       options={[
                         { value: 'all', label: 'Все домены' },
                         ...domains.map((domain) => ({ value: domain, label: domain })),
+                      ]}
+                    />
+                    <Typography.Text type="secondary">Фильтр:</Typography.Text>
+                    <Select
+                      value={eventFilter}
+                      onChange={(value) => setEventFilter(value)}
+                      style={{ minWidth: 220 }}
+                      options={[
+                        { value: 'all', label: 'Все события' },
+                        { value: 'active', label: 'Активные' },
+                        { value: 'critical', label: 'Критичные' },
+                        { value: 'attention', label: 'Требуют внимания' },
                       ]}
                     />
                   </Space>
