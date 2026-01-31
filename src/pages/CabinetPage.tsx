@@ -1,9 +1,8 @@
 import { useMemo } from 'react';
-import { Badge, Button, Card, Space, Table, Tag, Tooltip, Typography } from 'antd';
+import { Button, Card, Space, Table, Tag, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
-import DemoControlPanel from '../components/DemoControlPanel';
 import { useDemoData } from '../demo/demoState';
 import {
   AgentId,
@@ -26,12 +25,12 @@ interface AgentRow {
 const resolveStatusBadge = (status: AgentRow['status']) => {
   switch (status) {
     case 'Активен':
-      return <Badge status="success" text={status} />;
+      return <Tag color="green">{status}</Tag>;
     case 'Не получает данные':
-      return <Badge status="warning" text={status} />;
+      return <Tag color="gold">{status}</Tag>;
     case 'Приостановлен':
     default:
-      return <Badge status="default" text={status} />;
+      return <Tag color="default">{status}</Tag>;
   }
 };
 
@@ -52,9 +51,7 @@ function CabinetPage() {
         : isStale
           ? 'Не получает данные'
           : 'Активен';
-      const updatedAtLabel = lastEventAt
-        ? `${lastEventAt.format('DD.MM.YYYY HH:mm')} · ${minutesAgo ?? 0} мин назад`
-        : '—';
+      const updatedAtLabel = lastEventAt ? `${minutesAgo ?? 0} мин назад` : '—';
       const updatedAtTooltip = isStale
         ? `Нет новых данных более ${STALE_DATA_THRESHOLD_MINUTES} минут`
         : undefined;
@@ -90,8 +87,6 @@ function CabinetPage() {
       render: (value: number) => (
         <Tag color={value > 0 ? 'red' : 'default'}>{value}</Tag>
       ),
-      sorter: (a, b) => a.attentionCount - b.attentionCount,
-      defaultSortOrder: 'descend',
     },
     {
       title: 'Статус',
@@ -134,8 +129,6 @@ function CabinetPage() {
           Реестр цифровых заместителей по ключевым направлениям с актуальным статусом и числом событий.
         </Typography.Paragraph>
       </div>
-
-      <DemoControlPanel />
 
       <Card>
         <Space direction="vertical" style={{ width: '100%' }} size="middle">

@@ -46,7 +46,9 @@ function AppLayout() {
     <Layout className="app-layout">
       <Header className="app-header">
         <div className="app-brand">
-          <div className="app-logo">Σ</div>
+          <div className="app-logo">
+            <span className="app-logo-symbol">Σ</span>
+          </div>
           <div>
             <Typography.Text className="app-title">Сигма</Typography.Text>
             <Typography.Text className="app-subtitle">демонстрация возможностей</Typography.Text>

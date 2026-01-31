@@ -58,11 +58,18 @@ body {
   border-radius: 12px;
   background: linear-gradient(135deg, #2f6bff 0%, #6aa4ff 100%);
   color: #fff;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-weight: 700;
-  font-size: 18px;
+  font-size: 20px;
   box-shadow: 0 8px 18px rgba(47, 107, 255, 0.24);
+}
+
+.app-logo-symbol {
+  display: block;
+  line-height: 1;
+  transform: translateY(-1px);
 }
 
 .app-title {

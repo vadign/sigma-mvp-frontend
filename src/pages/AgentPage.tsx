@@ -1,4 +1,14 @@
-import { DemoActionLogEntry, DemoTaskDecision, HEAT_REGULATION } from '../demo/demoData';
+import { useMemo, useState } from 'react';
+import { Badge, Card, Col, Empty, Row, Select, Space, Statistic, Table, Tabs, Tag, Typography } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
+import dayjs from 'dayjs';
+import { useNavigate, useParams } from 'react-router-dom';
+import EventsTable from '../components/EventsTable';
+import { DemoActionLogEntry, DemoTaskDecision, DemoTimeseriesPoint, HEAT_REGULATION } from '../demo/demoData';
+import { useDemoData } from '../demo/demoState';
+import { STALE_DATA_THRESHOLD_MINUTES, filterEventsByAgent, getLastEventAt, isEventAttention } from '../utils/agents';
+import { getSeverityMeta } from '../utils/severity';
+
 const METRIC_PALETTE = [
   { line: '#36cfc9', fill: 'rgba(54, 207, 201, 0.24)', surface: '#e6fffb' },
   { line: '#597ef7', fill: 'rgba(89, 126, 247, 0.22)', surface: '#f0f5ff' },
@@ -35,17 +45,6 @@ const buildSparklinePaths = (values: number[]) => {
   const area = `M0,${bottom} ${points.map((point) => `L${point.x},${point.y}`).join(' ')} L${width},${bottom} Z`;
   return { line, area };
 };
-
-import { Badge, Card, Col, Empty, Row, Select, Space, Statistic, Table, Tabs, Tag, Typography } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
-import dayjs from 'dayjs';
-import { useNavigate, useParams } from 'react-router-dom';
-import DemoControlPanel from '../components/DemoControlPanel';
-import EventsTable from '../components/EventsTable';
-import { DemoActionLogEntry, DemoTaskDecision, DemoTimeseriesPoint, HEAT_REGULATION } from '../demo/demoData';
-import { useDemoData } from '../demo/demoState';
-import { STALE_DATA_THRESHOLD_MINUTES, filterEventsByAgent, getLastEventAt, isEventAttention } from '../utils/agents';
-import { getSeverityMeta } from '../utils/severity';
 
 const resolveActionTypeLabel = (actionType: DemoActionLogEntry['actionType']) => {
   const map: Record<DemoActionLogEntry['actionType'], string> = {
@@ -253,16 +252,6 @@ function AgentPage() {
     ];
   }, [series]);
 
-  const actionLogColumns: ColumnsType<DemoActionLogEntry> = [
-    {
-      title: 'Время',
-      dataIndex: 'timestamp',
-      render: (value: string) => dayjs(value).format('DD.MM HH:mm'),
-    },
-    {
-      title: 'Тип',
-      dataIndex: 'actionType',
-      render: (value: DemoActionLogEntry['actionType']) => (
   const metricsDashboard = useMemo(() => {
     if (!series || series.length === 0) return [];
     const metrics = Object.keys(series[0].values ?? {});
@@ -291,6 +280,34 @@ function AgentPage() {
         paths,
       };
     });
+  }, [series]);
+
+  const actionLogColumns: ColumnsType<DemoActionLogEntry> = [
+    {
+      title: 'Время',
+      dataIndex: 'timestamp',
+      render: (value: string) => dayjs(value).format('DD.MM HH:mm'),
+    },
+    {
+      title: 'Тип',
+      dataIndex: 'actionType',
+      render: (value: DemoActionLogEntry['actionType']) => <Tag>{resolveActionTypeLabel(value)}</Tag>,
+    },
+    {
+      title: 'Сводка',
+      dataIndex: 'summary',
+    },
+    {
+      title: 'Результат',
+      dataIndex: 'resultStatus',
+      render: (value: DemoActionLogEntry['resultStatus']) => {
+        const meta = resolveResultStatus(value);
+        return <Tag color={meta.color}>{meta.label}</Tag>;
+      },
+    },
+    {
+      title: 'Событие',
+      dataIndex: 'relatedEventId',
       align: 'center',
       render: (value: number) => <Tag>{`#${value}`}</Tag>,
     },
@@ -371,8 +388,6 @@ function AgentPage() {
           {agent.responsibilityZone} · Последние данные: {updatedLabel}
         </Typography.Paragraph>
       </div>
-
-      <DemoControlPanel />
 
       {isHeatAgent && (
         <Card title="Цифровой регламент обработки событий теплосетей" style={{ marginBottom: 16 }}>
@@ -511,45 +526,7 @@ function AgentPage() {
                 <Space direction="vertical" size="large" style={{ width: '100%' }}>
                   <div>
                     <Typography.Text strong>Динамика показателей за 24 часа</Typography.Text>
-                    {series && series.length > 0 ? (
-                      <Table
-                        rowKey="timestamp"
-                        columns={timeseriesColumns}
-                        dataSource={series}
-                        pagination={false}
-                        size="small"
-                      />
-                    ) : (
-                      <Empty description="Нет данных по динамике" />
-                    )}
-                  </div>
-                  <div>
-                    <Typography.Text strong>Проблемные зоны по повторяемости</Typography.Text>
-                    {problemZones.length > 0 ? (
-                      <Space direction="vertical">
-                        {problemZones.map((zone) => (
-                          <Space key={zone.address}>
-                            <Tag color={zone.count > 2 ? 'red' : 'blue'}>{zone.count}</Tag>
-                            <Typography.Text>{zone.address}</Typography.Text>
-                          </Space>
-                        ))}
-                      </Space>
-                    ) : (
-                      <Empty description="Нет проблемных зон" />
-                    )}
-                  </div>
-                </Space>
-              </Card>
-            ),
-          },
-        ]}
-      />
-    </div>
-  );
-}
-
-export default AgentPage;
-                    {metricsDashboard.length > 0 ? (
+                    {metricsDashboard.length > 0 && (
                       <div className="metrics-dashboard">
                         {metricsDashboard.map((metric) => {
                           const deltaLabel = `${metric.delta >= 0 ? '+' : ''}${formatMetricValue(metric.delta)}`;
@@ -589,3 +566,42 @@ export default AgentPage;
                           );
                         })}
                       </div>
+                    )}
+                    {series && series.length > 0 ? (
+                      <Table
+                        rowKey="timestamp"
+                        columns={timeseriesColumns}
+                        dataSource={series}
+                        pagination={false}
+                        size="small"
+                      />
+                    ) : (
+                      <Empty description="Нет данных по динамике" />
+                    )}
+                  </div>
+                  <div>
+                    <Typography.Text strong>Проблемные зоны по повторяемости</Typography.Text>
+                    {problemZones.length > 0 ? (
+                      <Space direction="vertical">
+                        {problemZones.map((zone) => (
+                          <Space key={zone.address}>
+                            <Tag color={zone.count > 2 ? 'red' : 'blue'}>{zone.count}</Tag>
+                            <Typography.Text>{zone.address}</Typography.Text>
+                          </Space>
+                        ))}
+                      </Space>
+                    ) : (
+                      <Empty description="Нет проблемных зон" />
+                    )}
+                  </div>
+                </Space>
+              </Card>
+            ),
+          },
+        ]}
+      />
+    </div>
+  );
+}
+
+export default AgentPage;
