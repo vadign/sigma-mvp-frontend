@@ -19,6 +19,7 @@ import NotificationsPage from './pages/NotificationsPage';
 import ScenarioPage from './pages/ScenarioPage';
 import CabinetPage from './pages/CabinetPage';
 import AgentPage from './pages/AgentPage';
+import ChatWidget from './components/chat/ChatWidget';
 
 const { Header, Content } = Layout;
 
@@ -80,6 +81,7 @@ function AppLayout() {
           <Route path="*" element={<Navigate to="/cabinet" replace />} />
         </Routes>
       </Content>
+      <ChatWidget />
     </Layout>
   );
 }
