@@ -176,6 +176,18 @@ body {
   margin-top: 10px;
 }
 
+.metric-tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-soft);
+  font-size: 12px;
+}
+
 .page-title {
   margin: 0;
   font-weight: 700;
