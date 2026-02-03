@@ -6,7 +6,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import EventsTable from '../components/EventsTable';
 import RegulationsPanel from '../components/RegulationsPanel';
-import { DemoActionLogEntry, DemoTaskDecision, DemoTimeseriesPoint, HEAT_REGULATION } from '../demo/demoData';
+import { DemoActionLogEntry, DemoTaskDecision, DemoTimeseriesPoint } from '../demo/demoData';
 import { useDemoData } from '../demo/demoState';
 import {
   STALE_DATA_THRESHOLD_MINUTES,
@@ -527,28 +527,6 @@ function AgentPage() {
           {agent.responsibilityZone} · Последние данные: {updatedLabel}
         </Typography.Paragraph>
       </div>
-
-      {isHeatAgent && (
-        <Card title="Цифровой регламент обработки событий теплосетей" style={{ marginBottom: 16 }}>
-          <Space direction="vertical" size={4}>
-            <Typography.Text strong>{HEAT_REGULATION.name}</Typography.Text>
-            <Typography.Text type="secondary">
-              Дата регламента: {dayjs(HEAT_REGULATION.date).format('DD.MM.YYYY')}
-            </Typography.Text>
-            <Space wrap>
-              <Tag color="blue">
-                Давление: {HEAT_REGULATION.pressure} ± {HEAT_REGULATION.pressureDeviation} bar
-              </Tag>
-              <Tag color="blue">
-                Диаметр: {HEAT_REGULATION.diameter} ± {HEAT_REGULATION.diameterDeviation} м
-              </Tag>
-            </Space>
-            <Typography.Paragraph style={{ marginBottom: 0 }}>
-              Рекомендация: {HEAT_REGULATION.recommendation}
-            </Typography.Paragraph>
-          </Space>
-        </Card>
-      )}
 
       <Tabs
         activeKey={activeTab}
