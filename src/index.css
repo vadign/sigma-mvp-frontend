@@ -188,6 +188,35 @@ body {
   font-size: 12px;
 }
 
+.incident-table .ant-table-thead > tr > th {
+  background: var(--surface-soft);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.incident-table .ant-table-tbody > tr > td {
+  vertical-align: top;
+}
+
+.incident-main {
+  min-width: 220px;
+}
+
+.incident-description {
+  font-size: 12px;
+}
+
+.incident-checklist {
+  max-width: 420px;
+}
+
+.incident-status-tag {
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+  margin: 0;
+}
+
 .page-title {
   margin: 0;
   font-weight: 700;
