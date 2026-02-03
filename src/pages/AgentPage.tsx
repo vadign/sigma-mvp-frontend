@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Badge, Card, Col, Empty, List, Row, Select, Space, Statistic, Table, Tabs, Tag, Typography } from 'antd';
+import { Badge, Card, Col, Empty, Row, Select, Space, Statistic, Table, Tabs, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -336,6 +336,71 @@ function AgentPage() {
       .sort((a, b) => dayjs(a.dueAt).diff(dayjs(b.dueAt)))
       .slice(0, 8);
   }, [tasksByAgent]);
+
+  const incidentColumns = useMemo<ColumnsType<EventResponse>>(
+    () => [
+      {
+        title: 'Инцидент',
+        dataIndex: 'msg',
+        render: (_: unknown, incident: EventResponse) => {
+          const msg = incident.msg ?? {};
+          const description =
+            (typeof msg.parameters === 'string' && msg.parameters) ||
+            (typeof msg.description === 'string' && msg.description) ||
+            (typeof msg.details === 'string' && msg.details) ||
+            '';
+          return (
+            <Space direction="vertical" size={4} className="incident-main">
+              <Typography.Text strong>{resolveIncidentTitle(incident)}</Typography.Text>
+              {description ? (
+                <Typography.Text type="secondary" className="incident-description">
+                  {description}
+                </Typography.Text>
+              ) : (
+                <Typography.Text type="secondary" className="incident-description">
+                  Детали отсутствуют
+                </Typography.Text>
+              )}
+            </Space>
+          );
+        },
+      },
+      {
+        title: 'Оценка',
+        dataIndex: ['msg', 'estimation'],
+        render: (value?: string) => <Typography.Text>{value || '—'}</Typography.Text>,
+      },
+      {
+        title: 'Создан',
+        dataIndex: 'created_at',
+        render: (value: string) => dayjs(value).format('DD.MM.YYYY HH:mm'),
+      },
+      {
+        title: 'Чек-лист оператора/диспетчера',
+        dataIndex: 'msg',
+        render: (_: unknown, incident: EventResponse) => {
+          const recommendations = getIncidentRecommendations(incident);
+          return (
+            <Space direction="vertical" size={8} className="incident-checklist">
+              {recommendations.length > 0 ? (
+                recommendations.map((step, index) => (
+                  <Space key={`${incident.id}-${index}`} align="start" size="small">
+                    <Tag color={step.done ? 'green' : 'default'} className="incident-status-tag">
+                      {step.done ? 'Выполнено' : 'Не выполнено'}
+                    </Tag>
+                    <Typography.Text>{step.text}</Typography.Text>
+                  </Space>
+                ))
+              ) : (
+                <Typography.Text type="secondary">Чек-лист недоступен.</Typography.Text>
+              )}
+            </Space>
+          );
+        },
+      },
+    ],
+    [],
+  );
 
   const lastDayEvents = useMemo(() => {
     const since = dayjs(now).subtract(24, 'hour');
@@ -819,61 +884,17 @@ function AgentPage() {
                     <Card>
                       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
                         {incidentsError && <Typography.Text type="danger">{incidentsError}</Typography.Text>}
-                        <List
+                        <Table
+                          rowKey="id"
+                          className="incident-table"
+                          columns={incidentColumns}
                           dataSource={incidents}
                           loading={incidentsLoading}
+                          pagination={{ pageSize: 5 }}
                           locale={{
                             emptyText: incidentsError
                               ? 'Не удалось загрузить инциденты.'
                               : 'Инциденты не найдены.',
-                          }}
-                          renderItem={(incident) => {
-                            const msg = incident.msg ?? {};
-                            const recommendations = getIncidentRecommendations(incident);
-                            const levelMeta = getSeverityMeta(msg.level);
-                            const createdAt = dayjs(incident.created_at).format('DD.MM.YYYY HH:mm');
-                            return (
-                              <List.Item>
-                                <List.Item.Meta
-                                  title={
-                                    <Space align="center" wrap>
-                                      <Typography.Text strong>{resolveIncidentTitle(incident)}</Typography.Text>
-                                      <Tag color={levelMeta.color}>{levelMeta.tagText}</Tag>
-                                    </Space>
-                                  }
-                                  description={
-                                    <Space direction="vertical" size={4}>
-                                      <Typography.Text type="secondary">Создан: {createdAt}</Typography.Text>
-                                      {msg.estimation && (
-                                        <Typography.Text>
-                                          <strong>Оценка:</strong> {msg.estimation}
-                                        </Typography.Text>
-                                      )}
-                                      {msg.parameters && (
-                                        <Typography.Text>
-                                          <strong>Параметры:</strong> {msg.parameters}
-                                        </Typography.Text>
-                                      )}
-                                      <Space direction="vertical" size={4}>
-                                        <Typography.Text strong>Чек-лист действий:</Typography.Text>
-                                        {recommendations.length > 0 ? (
-                                          recommendations.map((step, index) => (
-                                            <Space key={`${incident.id}-${index}`} align="center" size="small">
-                                              <Tag color={step.done ? 'green' : 'default'}>
-                                                {step.done ? 'Выполнено' : 'Не выполнено'}
-                                              </Tag>
-                                              <Typography.Text>{step.text}</Typography.Text>
-                                            </Space>
-                                          ))
-                                        ) : (
-                                          <Typography.Text type="secondary">Чек-лист недоступен.</Typography.Text>
-                                        )}
-                                      </Space>
-                                    </Space>
-                                  }
-                                />
-                              </List.Item>
-                            );
                           }}
                         />
                       </Space>
