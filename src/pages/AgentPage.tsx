@@ -3,7 +3,7 @@ import { Badge, Card, Col, Empty, Row, Select, Space, Statistic, Table, Tabs, Ta
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, type TooltipContentProps } from 'recharts';
 import { fetchEvents } from '../api/client';
 import { EventResponse } from '../api/types';
 import EventsTable from '../components/EventsTable';
@@ -491,12 +491,10 @@ function AgentPage() {
     });
   }, [series]);
 
-  const renderMetricTooltip = (props: {
-    active?: boolean;
-    payload?: Array<{ value?: number | null; payload?: { label?: string } }>;
-  }) => {
-    if (!props.active || !props.payload || props.payload.length === 0) return null;
-    const entry = props.payload[0];
+  const renderMetricTooltip = ({ active, payload }: TooltipContentProps<number, string>) => {
+    if (!active || payload.length === 0) return null;
+    const entry = payload[0] as { value?: number | null; payload?: { label?: string } } | undefined;
+    if (!entry) return null;
     return (
       <div className="metric-tooltip">
         <Typography.Text type="secondary">{entry.payload?.label ?? '—'}</Typography.Text>
