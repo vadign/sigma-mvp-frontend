@@ -7,6 +7,7 @@ import {
   NotificationOutlined,
   InteractionOutlined,
   UserOutlined,
+  CodeOutlined,
 } from '@ant-design/icons';
 import { useMemo } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
@@ -19,6 +20,7 @@ import NotificationsPage from './pages/NotificationsPage';
 import ScenarioPage from './pages/ScenarioPage';
 import CabinetPage from './pages/CabinetPage';
 import AgentPage from './pages/AgentPage';
+import DevCabinetPage from './pages/DevCabinetPage';
 import ChatWidget from './components/chat/ChatWidget';
 
 const { Header, Content } = Layout;
@@ -31,6 +33,7 @@ const tabs = [
   { key: 'mayor', label: 'Дашборд мэра', icon: <CrownOutlined />, path: '/mayor' },
   { key: 'notifications', label: 'Уведомления', icon: <NotificationOutlined />, path: '/notifications' },
   { key: 'scenario', label: 'Сквозной кейс', icon: <InteractionOutlined />, path: '/scenario' },
+  { key: 'dev-cabinet', label: 'Кабинет разработчика', icon: <CodeOutlined />, path: '/dev-cabinet' },
 ];
 
 function AppLayout() {
@@ -78,6 +81,7 @@ function AppLayout() {
           <Route path="/mayor" element={<MayorDashboardPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
           <Route path="/scenario" element={<ScenarioPage />} />
+          <Route path="/dev-cabinet" element={<DevCabinetPage />} />
           <Route path="*" element={<Navigate to="/cabinet" replace />} />
         </Routes>
       </Content>
