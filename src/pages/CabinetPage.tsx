@@ -1,8 +1,28 @@
 import { useMemo, useState } from 'react';
-import { Button, Card, Form, Input, Modal, Select, Space, Table, Tag, Tooltip, Typography, message } from 'antd';
+import {
+  Badge,
+  Button,
+  Card,
+  Col,
+  Form,
+  Input,
+  Modal,
+  Row,
+  Select,
+  Space,
+  Statistic,
+  Table,
+  Tabs,
+  Tag,
+  Tooltip,
+  Typography,
+  message,
+} from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
+import { EventResponse } from '../api/types';
+import { DemoActionLogEntry, DemoTaskDecision, DemoTimeseriesPoint } from '../demo/demoData';
 import { useDemoData } from '../demo/demoState';
 import { createRequest, DevRequestDomain, DevRequestPriority } from '../features/devRequests/store';
 import {
@@ -11,14 +31,21 @@ import {
   filterEventsByAgent,
   getLastEventAt,
   isEventAttention,
+  isEventClosed,
+  resolveAgentIdForEvent,
 } from '../utils/agents';
+import { getSeverityMeta } from '../utils/severity';
 
 interface AgentRow {
   id: AgentId;
   title: string;
   responsibility: string;
   attentionCount: number;
+  activeIncidents: number;
+  criticalIncidents: number;
+  overdueTasks: number;
   status: 'Активен' | 'Не получает данные' | 'Приостановлен';
+  lastDataAt: dayjs.Dayjs | null;
   updatedAtLabel: string;
   updatedAtTooltip?: string;
 }
@@ -32,7 +59,15 @@ interface RequestFormValues {
   contact?: string;
 }
 
-const resolveStatusBadge = (status: AgentRow['status']) => {
+interface KpiCard {
+  key: string;
+  title: string;
+  value: number | string;
+  hint?: string;
+  onClick: () => void;
+}
+
+const resolveStatusTag = (status: AgentRow['status']) => {
   switch (status) {
     case 'Активен':
       return <Tag color="green">{status}</Tag>;
@@ -44,13 +79,55 @@ const resolveStatusBadge = (status: AgentRow['status']) => {
   }
 };
 
+const resolveActionTypeLabel = (actionType: DemoActionLogEntry['actionType']) => {
+  const map: Record<DemoActionLogEntry['actionType'], string> = {
+    notify: 'Уведомление',
+    assign_task: 'Поручение',
+    request_info: 'Запрос данных',
+    create_document: 'Документ',
+    escalate: 'Эскалация',
+    auto_close: 'Автозакрытие',
+    comment: 'Комментарий',
+  };
+  return map[actionType];
+};
+
+const resolveActionTypeColor = (actionType: DemoActionLogEntry['actionType']) => {
+  const map: Record<DemoActionLogEntry['actionType'], string> = {
+    notify: 'blue',
+    assign_task: 'gold',
+    request_info: 'geekblue',
+    create_document: 'purple',
+    escalate: 'red',
+    auto_close: 'green',
+    comment: 'default',
+  };
+  return map[actionType];
+};
+
+const resolveTaskOverdue = (task: DemoTaskDecision, now: number) => {
+  return task.status === 'Overdue' || (dayjs(task.dueAt).isBefore(dayjs(now)) && task.status !== 'Done');
+};
+
+const findFirstResponseMinutes = (event: EventResponse, log: DemoActionLogEntry[]) => {
+  const firstAction = log
+    .filter((entry) => entry.relatedEventId === event.id && (entry.actionType === 'notify' || entry.actionType === 'assign_task'))
+    .sort((a, b) => dayjs(a.timestamp).diff(dayjs(b.timestamp)))[0];
+
+  if (!firstAction) return null;
+
+  const value = dayjs(firstAction.timestamp).diff(dayjs(event.created_at), 'minute');
+  return value >= 0 ? value : null;
+};
+
 function CabinetPage() {
   const navigate = useNavigate();
   const [form] = Form.useForm<RequestFormValues>();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [activeTab, setActiveTab] = useState<'overview' | 'assistants'>('overview');
 
-  const { agents, events } = useDemoData();
+  const { now, agents, events, actionLog, tasksDecisions, timeseries } = useDemoData();
   const formValues = Form.useWatch([], form);
 
   const isSubmitEnabled = useMemo(() => {
@@ -91,41 +168,221 @@ function CabinetPage() {
     }
   };
 
-  const agentRows = useMemo<AgentRow[]>(() => {
-    return agents.map((agent) => {
-      const scopedEvents = filterEventsByAgent(events, agent.id);
-      const attentionCount = scopedEvents.filter(isEventAttention).length;
-      const lastEventAt = getLastEventAt(scopedEvents);
-      const minutesAgo = lastEventAt ? dayjs().diff(lastEventAt, 'minute') : null;
-      const isStale = minutesAgo == null || minutesAgo > STALE_DATA_THRESHOLD_MINUTES;
-      const status: AgentRow['status'] = agent.isPaused
-        ? 'Приостановлен'
-        : isStale
-          ? 'Не получает данные'
-          : 'Активен';
-      const updatedAtLabel = lastEventAt ? `${minutesAgo ?? 0} мин назад` : '—';
-      const updatedAtTooltip = isStale
-        ? `Нет новых данных более ${STALE_DATA_THRESHOLD_MINUTES} минут`
-        : undefined;
+  const activeEvents = useMemo(
+    () => events.filter((event) => event.msg?.status === 'New' || event.msg?.status === 'InProgress'),
+    [events],
+  );
 
-      return {
-        id: agent.id,
-        title: agent.name,
-        responsibility: agent.responsibilityZone,
-        attentionCount,
-        status,
-        updatedAtLabel,
-        updatedAtTooltip,
-      };
-    })
-      .sort((a, b) => b.attentionCount - a.attentionCount);
-  }, [agents, events]);
+  const criticalActiveEvents = useMemo(
+    () => activeEvents.filter((event) => event.msg?.level === 1 || event.msg?.level === 2),
+    [activeEvents],
+  );
+
+  const attentionEvents = useMemo(() => events.filter(isEventAttention), [events]);
+
+  const tasksInWork = useMemo(
+    () => tasksDecisions.filter((task) => task.status === 'Created' || task.status === 'InProgress'),
+    [tasksDecisions],
+  );
+
+  const overdueTasks = useMemo(
+    () => tasksDecisions.filter((task) => resolveTaskOverdue(task, now)),
+    [tasksDecisions, now],
+  );
+
+  const lastDataAtGlobal = useMemo(() => {
+    if (events.length > 0) {
+      return events.reduce((latest, event) => {
+        const timestamp = dayjs(event.msg?.updated_at ?? event.created_at);
+        if (!latest || timestamp.isAfter(latest)) return timestamp;
+        return latest;
+      }, null as dayjs.Dayjs | null);
+    }
+
+    if (actionLog.length > 0) {
+      return actionLog.reduce((latest, entry) => {
+        const timestamp = dayjs(entry.timestamp);
+        if (!latest || timestamp.isAfter(latest)) return timestamp;
+        return latest;
+      }, null as dayjs.Dayjs | null);
+    }
+
+    return null;
+  }, [events, actionLog]);
+
+  const agentRows = useMemo<AgentRow[]>(() => {
+    return agents
+      .map((agent) => {
+        const scopedEvents = filterEventsByAgent(events, agent.id);
+        const attentionCount = scopedEvents.filter(isEventAttention).length;
+        const activeIncidents = scopedEvents.filter((event) => event.msg?.status === 'New' || event.msg?.status === 'InProgress').length;
+        const criticalIncidents = scopedEvents.filter(
+          (event) => (event.msg?.status === 'New' || event.msg?.status === 'InProgress') && (event.msg?.level === 1 || event.msg?.level === 2),
+        ).length;
+
+        const tasksByAgent = tasksDecisions.filter((task) => task.agentId === agent.id);
+        const overdueTaskCount = tasksByAgent.filter((task) => resolveTaskOverdue(task, now)).length;
+
+        const lastEventAt = getLastEventAt(scopedEvents);
+        const actionByAgent = actionLog.filter((entry) => entry.agentId === agent.id);
+        const lastActionAt = actionByAgent.reduce((latest, entry) => {
+          const timestamp = dayjs(entry.timestamp);
+          if (!latest || timestamp.isAfter(latest)) return timestamp;
+          return latest;
+        }, null as dayjs.Dayjs | null);
+        const lastDataAt = lastEventAt ?? lastActionAt;
+
+        const minutesAgo = lastDataAt ? dayjs(now).diff(lastDataAt, 'minute') : null;
+        const isStale = minutesAgo == null || minutesAgo > STALE_DATA_THRESHOLD_MINUTES;
+        const status: AgentRow['status'] = agent.isPaused
+          ? 'Приостановлен'
+          : isStale
+            ? 'Не получает данные'
+            : 'Активен';
+
+        const updatedAtLabel = lastDataAt ? dayjs(lastDataAt).format('DD.MM.YYYY HH:mm') : '—';
+        const updatedAtTooltip = isStale
+          ? `Нет новых данных более ${STALE_DATA_THRESHOLD_MINUTES} минут`
+          : undefined;
+
+        return {
+          id: agent.id,
+          title: agent.name,
+          responsibility: agent.responsibilityZone,
+          attentionCount,
+          activeIncidents,
+          criticalIncidents,
+          overdueTasks: overdueTaskCount,
+          status,
+          lastDataAt,
+          updatedAtLabel,
+          updatedAtTooltip,
+        };
+      })
+      .sort((a, b) => {
+        if (b.attentionCount !== a.attentionCount) return b.attentionCount - a.attentionCount;
+        return b.criticalIncidents - a.criticalIncidents;
+      });
+  }, [agents, events, tasksDecisions, now, actionLog]);
+
+  const assistantsByStatus = useMemo(
+    () =>
+      agentRows.reduce(
+        (acc, row) => {
+          if (row.status === 'Активен') acc.active += 1;
+          if (row.status === 'Не получает данные') acc.stale += 1;
+          if (row.status === 'Приостановлен') acc.paused += 1;
+          return acc;
+        },
+        { active: 0, stale: 0, paused: 0 },
+      ),
+    [agentRows],
+  );
+
+  const responseTimes = useMemo(
+    () =>
+      events
+        .map((event) => findFirstResponseMinutes(event, actionLog))
+        .filter((value): value is number => value != null),
+    [events, actionLog],
+  );
+
+  const avgResponseTime = useMemo(() => {
+    if (responseTimes.length === 0) return null;
+    return Math.round(responseTimes.reduce((acc, value) => acc + value, 0) / responseTimes.length);
+  }, [responseTimes]);
+
+  const topAttentionEvents = useMemo(
+    () => attentionEvents.sort((a, b) => dayjs(b.msg?.updated_at ?? b.created_at).valueOf() - dayjs(a.msg?.updated_at ?? a.created_at).valueOf()).slice(0, 10),
+    [attentionEvents],
+  );
+
+  const latestActions = useMemo(
+    () => [...actionLog].sort((a, b) => dayjs(b.timestamp).valueOf() - dayjs(a.timestamp).valueOf()).slice(0, 12),
+    [actionLog],
+  );
+
+  const timeseriesSummary = useMemo(
+    () =>
+      Object.entries(timeseries).map(([agentId, points]) => {
+        const metrics = Object.keys(points[0]?.values ?? {});
+        const latestPoints = points.slice(-6);
+        const summary = metrics.map((metric) => {
+          const values = points.map((point) => point.values[metric]).filter((value) => Number.isFinite(value));
+          const current = latestPoints[latestPoints.length - 1]?.values?.[metric];
+          return {
+            metric,
+            min: values.length ? Math.min(...values) : null,
+            max: values.length ? Math.max(...values) : null,
+            current: Number.isFinite(current) ? current : null,
+          };
+        });
+
+        return { agentId: agentId as AgentId, latestPoints, summary };
+      }),
+    [timeseries],
+  );
+
+  const attentionLeader = agentRows[0];
+
+  const kpiCards = useMemo<KpiCard[]>(
+    () => [
+      {
+        key: 'active-incidents',
+        title: 'Активные инциденты',
+        value: activeEvents.length,
+        onClick: () => setActiveTab('assistants'),
+      },
+      {
+        key: 'critical-incidents',
+        title: 'Критичные инциденты',
+        value: criticalActiveEvents.length,
+        onClick: () => setActiveTab('assistants'),
+      },
+      {
+        key: 'attention-incidents',
+        title: 'Требуют внимания',
+        value: attentionEvents.length,
+        onClick: () => {
+          if (attentionLeader?.attentionCount > 0) {
+            navigate(`/cabinet/${attentionLeader.id}`);
+            return;
+          }
+          setActiveTab('assistants');
+        },
+      },
+      {
+        key: 'tasks-in-work',
+        title: 'Поручения в работе',
+        value: tasksInWork.length,
+        onClick: () => setActiveTab('assistants'),
+      },
+      {
+        key: 'tasks-overdue',
+        title: 'Просрочено поручений',
+        value: overdueTasks.length,
+        onClick: () => setActiveTab('assistants'),
+      },
+      {
+        key: 'avg-response',
+        title: 'Среднее время реакции',
+        value: avgResponseTime == null ? '—' : `${avgResponseTime} мин`,
+        hint: avgResponseTime == null ? 'Недостаточно данных для расчета' : 'По первым действиям notify/assign_task',
+        onClick: () => setActiveTab('assistants'),
+      },
+    ],
+    [activeEvents.length, criticalActiveEvents.length, attentionEvents.length, attentionLeader, tasksInWork.length, overdueTasks.length, avgResponseTime, navigate],
+  );
 
   const columns: ColumnsType<AgentRow> = [
     {
-      title: 'Заместитель',
+      title: 'Помощник',
       dataIndex: 'title',
-      render: (value: string) => <Typography.Text strong>{value}</Typography.Text>,
+      render: (_: string, record) => (
+        <Button type="link" onClick={() => navigate(`/cabinet/${record.id}`)} style={{ padding: 0 }}>
+          {record.title}
+        </Button>
+      ),
     },
     {
       title: 'Зона ответственности',
@@ -133,30 +390,43 @@ function CabinetPage() {
       render: (value: string) => <Typography.Text>{value}</Typography.Text>,
     },
     {
-      title: 'Требуют внимания',
-      dataIndex: 'attentionCount',
-      align: 'center',
-      render: (value: number) => (
-        <Tag color={value > 0 ? 'red' : 'default'}>{value}</Tag>
-      ),
-    },
-    {
       title: 'Статус',
       dataIndex: 'status',
       render: (_: string, record) =>
-        record.updatedAtTooltip ? (
-          <Tooltip title={record.updatedAtTooltip}>{resolveStatusBadge(record.status)}</Tooltip>
-        ) : (
-          resolveStatusBadge(record.status)
-        ),
+        record.updatedAtTooltip ? <Tooltip title={record.updatedAtTooltip}>{resolveStatusTag(record.status)}</Tooltip> : resolveStatusTag(record.status),
+    },
+    {
+      title: 'Требуют внимания',
+      dataIndex: 'attentionCount',
+      align: 'center',
+      render: (_: number, record) => (
+        <Button type="link" onClick={() => navigate(`/cabinet/${record.id}`)}>
+          <Tag color={record.attentionCount > 0 ? 'red' : 'default'}>{record.attentionCount}</Tag>
+        </Button>
+      ),
+    },
+    {
+      title: 'Активные инциденты',
+      dataIndex: 'activeIncidents',
+      align: 'center',
+    },
+    {
+      title: 'Критичные',
+      dataIndex: 'criticalIncidents',
+      align: 'center',
+      render: (value: number) => <Tag color={value > 0 ? 'volcano' : 'default'}>{value}</Tag>,
+    },
+    {
+      title: 'Просрочено поручений',
+      dataIndex: 'overdueTasks',
+      align: 'center',
+      render: (value: number) => <Tag color={value > 0 ? 'red' : 'default'}>{value}</Tag>,
     },
     {
       title: 'Последние данные',
       dataIndex: 'updatedAtLabel',
       render: (_: string, record) => (
-        <Typography.Text type={record.updatedAtLabel === '—' ? 'secondary' : undefined}>
-          {record.updatedAtLabel}
-        </Typography.Text>
+        <Typography.Text type={record.updatedAtLabel === '—' ? 'secondary' : undefined}>{record.updatedAtLabel}</Typography.Text>
       ),
     },
     {
@@ -179,7 +449,7 @@ function CabinetPage() {
             Личный кабинет
           </Typography.Title>
           <Typography.Paragraph type="secondary">
-            Реестр цифровых заместителей по ключевым направлениям с актуальным статусом и числом событий.
+            Общая сводка по цифровым помощникам и быстрый переход к детализации по каждому направлению.
           </Typography.Paragraph>
         </div>
         <Button type="primary" onClick={() => setIsModalOpen(true)}>
@@ -187,19 +457,199 @@ function CabinetPage() {
         </Button>
       </Space>
 
-      <Card>
-        <Space direction="vertical" style={{ width: '100%' }} size="middle">
-          <Table
-            rowKey="id"
-            dataSource={agentRows}
-            columns={columns}
-            pagination={false}
-          />
-          <Typography.Text type="secondary">
-            Сортировка по числу событий, требующих внимания, в порядке убывания.
-          </Typography.Text>
-        </Space>
-      </Card>
+      <Tabs
+        activeKey={activeTab}
+        onChange={(key) => setActiveTab(key as 'overview' | 'assistants')}
+        items={[
+          {
+            key: 'overview',
+            label: 'Общий дашборд',
+            children: (
+              <Space direction="vertical" style={{ width: '100%' }} size="large">
+                <Card>
+                  <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                    <div>
+                      <Typography.Title level={4} style={{ marginBottom: 8 }}>
+                        Общий дашборд
+                      </Typography.Title>
+                      <Typography.Text type="secondary">
+                        Последнее обновление: {lastDataAtGlobal ? dayjs(lastDataAtGlobal).format('DD.MM.YYYY HH:mm:ss') : '—'}
+                      </Typography.Text>
+                    </div>
+                    <Space wrap>
+                      <Tag color="green">Активны: {assistantsByStatus.active}</Tag>
+                      <Tag color="gold">Не получают данные: {assistantsByStatus.stale}</Tag>
+                      <Tag>Приостановлены: {assistantsByStatus.paused}</Tag>
+                    </Space>
+                  </Space>
+                </Card>
+
+                <Row gutter={[16, 16]}>
+                  {kpiCards.map((card) => (
+                    <Col key={card.key} xs={24} sm={12} xl={8}>
+                      <Card hoverable onClick={card.onClick}>
+                        <Statistic title={card.title} value={card.value} />
+                        {card.hint ? <Typography.Text type="secondary">{card.hint}</Typography.Text> : null}
+                      </Card>
+                    </Col>
+                  ))}
+                </Row>
+
+                <Card title="Сводка по помощникам">
+                  <Table rowKey="id" dataSource={agentRows} columns={columns} pagination={false} />
+                  <Typography.Text type="secondary">
+                    Сортировка по полю «Требуют внимания» (убывание), затем по полю «Критичные» (убывание).
+                  </Typography.Text>
+                </Card>
+
+                <Card title="Требуют вмешательства сейчас">
+                  <Table
+                    rowKey="id"
+                    dataSource={topAttentionEvents}
+                    pagination={false}
+                    columns={[
+                      {
+                        title: 'Время',
+                        key: 'time',
+                        render: (_: unknown, record) => dayjs(record.msg?.updated_at ?? record.created_at).format('DD.MM HH:mm'),
+                      },
+                      {
+                        title: 'Домен',
+                        key: 'domain',
+                        render: (_: unknown, record) => <Tag color="blue">{record.msg?.domain ?? '—'}</Tag>,
+                      },
+                      {
+                        title: 'Событие',
+                        key: 'title',
+                        render: (_: unknown, record) => <Typography.Text>{record.msg?.title ?? `Событие #${record.id}`}</Typography.Text>,
+                      },
+                      {
+                        title: 'Критичность',
+                        key: 'severity',
+                        render: (_: unknown, record) => <Tag color={record.msg?.level === 1 ? 'red' : record.msg?.level === 2 ? 'orange' : 'default'}>{getSeverityMeta(record.msg?.level).label}</Tag>,
+                      },
+                      {
+                        title: 'Локация',
+                        key: 'location',
+                        render: (_: unknown, record) => record.msg?.location?.address ?? '—',
+                      },
+                      {
+                        title: 'Статус',
+                        key: 'status',
+                        render: (_: unknown, record) => <Badge status={isEventClosed(record) ? 'default' : 'processing'} text={record.msg?.status ?? '—'} />,
+                      },
+                    ]}
+                    onRow={(record) => ({
+                      onClick: () => {
+                        const target = resolveAgentIdForEvent(record);
+                        if (target) navigate(`/cabinet/${target}`);
+                      },
+                      style: { cursor: 'pointer' },
+                    })}
+                  />
+                </Card>
+
+                <Card title="Последние действия помощников">
+                  <Table
+                    rowKey="id"
+                    dataSource={latestActions}
+                    pagination={false}
+                    columns={[
+                      {
+                        title: 'Время',
+                        key: 'time',
+                        render: (_: unknown, record: DemoActionLogEntry) => dayjs(record.timestamp).format('DD.MM HH:mm'),
+                      },
+                      {
+                        title: 'Помощник',
+                        key: 'agent',
+                        render: (_: unknown, record: DemoActionLogEntry) => {
+                          const title = agents.find((agent) => agent.id === record.agentId)?.name ?? record.agentId;
+                          return <Tag color="blue">{title}</Tag>;
+                        },
+                      },
+                      {
+                        title: 'Тип действия',
+                        key: 'actionType',
+                        render: (_: unknown, record: DemoActionLogEntry) => <Tag color={resolveActionTypeColor(record.actionType)}>{resolveActionTypeLabel(record.actionType)}</Tag>,
+                      },
+                      {
+                        title: 'Описание',
+                        dataIndex: 'summary',
+                      },
+                      {
+                        title: 'Связанное событие',
+                        key: 'event',
+                        render: (_: unknown, record: DemoActionLogEntry) => `#${record.relatedEventId}`,
+                      },
+                    ]}
+                    onRow={(record) => ({
+                      onClick: () => navigate(`/cabinet/${record.agentId}`),
+                      style: { cursor: 'pointer' },
+                    })}
+                  />
+                </Card>
+
+                <Card title="Динамика за 24 часа">
+                  <Row gutter={[16, 16]}>
+                    {timeseriesSummary.map((item) => {
+                      const agent = agents.find((entry) => entry.id === item.agentId);
+                      return (
+                        <Col key={item.agentId} xs={24} lg={8}>
+                          <Card size="small" title={agent?.name ?? item.agentId}>
+                            <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                              {item.summary.map((metric) => (
+                                <Typography.Text key={metric.metric}>
+                                  {metric.metric}: min {metric.min ?? '—'} / max {metric.max ?? '—'} / текущее {metric.current ?? '—'}
+                                </Typography.Text>
+                              ))}
+                              <Table
+                                size="small"
+                                rowKey="timestamp"
+                                dataSource={item.latestPoints}
+                                pagination={false}
+                                columns={[
+                                  {
+                                    title: 'Время',
+                                    key: 'timestamp',
+                                    render: (_: unknown, record: DemoTimeseriesPoint) => dayjs(record.timestamp).format('HH:mm'),
+                                  },
+                                  {
+                                    title: 'Значения',
+                                    key: 'values',
+                                    render: (_: unknown, record: DemoTimeseriesPoint) =>
+                                      Object.entries(record.values)
+                                        .map(([name, value]) => `${name}: ${value}`)
+                                        .join(' · '),
+                                  },
+                                ]}
+                              />
+                            </Space>
+                          </Card>
+                        </Col>
+                      );
+                    })}
+                  </Row>
+                </Card>
+              </Space>
+            ),
+          },
+          {
+            key: 'assistants',
+            label: 'Цифровые помощники',
+            children: (
+              <Card>
+                <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                  <Table rowKey="id" dataSource={agentRows} columns={columns} pagination={false} />
+                  <Typography.Text type="secondary">
+                    Сортировка по числу событий, требующих внимания, в порядке убывания.
+                  </Typography.Text>
+                </Space>
+              </Card>
+            ),
+          },
+        ]}
+      />
 
       <Modal
         open={isModalOpen}
