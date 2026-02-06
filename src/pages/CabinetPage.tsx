@@ -31,6 +31,7 @@ import {
   AgentId,
   STALE_DATA_THRESHOLD_MINUTES,
   filterEventsByAgent,
+  getEventStatusLabel,
   getLastEventAt,
   isEventAttention,
   isEventClosed,
@@ -571,7 +572,9 @@ function CabinetPage() {
                       {
                         title: 'Статус',
                         key: 'status',
-                        render: (_: unknown, record) => <Badge status={isEventClosed(record) ? 'default' : 'processing'} text={record.msg?.status ?? '—'} />,
+                        render: (_: unknown, record) => (
+                          <Badge status={isEventClosed(record) ? 'default' : 'processing'} text={getEventStatusLabel(record.msg?.status)} />
+                        ),
                       },
                     ]}
                     onRow={(record) => ({

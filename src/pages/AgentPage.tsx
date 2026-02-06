@@ -32,6 +32,7 @@ import { closeEvent } from '../data/eventsStore';
 import {
   STALE_DATA_THRESHOLD_MINUTES,
   filterEventsByAgent,
+  getEventStatusLabel,
   getLastEventAt,
   isEventAttention,
   isEventClosed,
@@ -469,7 +470,7 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
         dataIndex: ['msg', 'status'],
         render: (value?: string) => {
           const isClosed = value === 'Resolved' || value === 'Closed';
-          return <Tag color={isClosed ? 'green' : 'blue'}>{value ?? '—'}</Tag>;
+          return <Tag color={isClosed ? 'green' : 'blue'}>{getEventStatusLabel(value)}</Tag>;
         },
       },
       {
@@ -1331,7 +1332,7 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
                 <Typography.Text strong>{resolveIncidentTitle(selectedIncident)}</Typography.Text>
                 <Typography.Text>{selectedIncident.msg?.description ?? 'Описание отсутствует'}</Typography.Text>
                 <Space wrap>
-                  <Tag>{`Статус: ${selectedIncident.msg?.status ?? '—'}`}</Tag>
+                  <Tag>{`Статус: ${getEventStatusLabel(selectedIncident.msg?.status)}`}</Tag>
                   <Tag>{`Критичность: ${selectedIncident.msg?.level ?? '—'}`}</Tag>
                   <Tag>{`Адрес: ${selectedIncident.msg?.location?.address ?? '—'}`}</Tag>
                 </Space>
@@ -1365,8 +1366,8 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
               >
                 <Select
                   options={[
-                    { value: 'Resolved', label: 'Устранен (Resolved)' },
-                    { value: 'Closed', label: 'Закрыт (Closed)' },
+                    { value: 'Resolved', label: 'Устранен' },
+                    { value: 'Closed', label: 'Закрыт' },
                   ]}
                 />
               </Form.Item>

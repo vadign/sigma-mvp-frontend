@@ -25,10 +25,10 @@ const RECIPIENT_OPTIONS: Record<AgentId, string[]> = {
 };
 
 const SEVERITY_LABELS: Record<SeverityKey, string> = {
-  low: 'Low',
-  medium: 'Medium',
-  high: 'High',
-  critical: 'Critical',
+  low: 'Низкая',
+  medium: 'Средняя',
+  high: 'Высокая',
+  critical: 'Критическая',
 };
 
 function AgentSettingsModal({ open, agentId, settings, onClose }: AgentSettingsModalProps) {

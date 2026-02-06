@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { AgentId } from '../../utils/agents';
+import { AgentId, STALE_DATA_THRESHOLD_MINUTES } from '../../utils/agents';
 
 export type DecisionMode = 'recommend' | 'confirm' | 'auto';
 export type SeverityKey = 'low' | 'medium' | 'high' | 'critical';
@@ -34,6 +34,7 @@ export interface AgentSettingsPatch extends Omit<Partial<AgentSettings>, 'notifi
 }
 
 const STORAGE_KEY = 'sigma_agent_settings_v1';
+const THRESHOLD_MIGRATION_KEY = 'sigma_agent_settings_no_data_threshold_7d_migrated_v1';
 
 const listeners = new Set<() => void>();
 
@@ -56,7 +57,7 @@ const createDefaultSettings = (agentId: AgentId): AgentSettings => ({
     sms: false,
   },
   notificationRecipients: [],
-  noDataThresholdMinutes: 15,
+  noDataThresholdMinutes: STALE_DATA_THRESHOLD_MINUTES,
   regulationsOverrides: {},
   owner: '',
   comment: '',
@@ -64,6 +65,35 @@ const createDefaultSettings = (agentId: AgentId): AgentSettings => ({
 });
 
 const canUseStorage = () => typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
+
+const applyNoDataThresholdMigration = (store: Record<AgentId, AgentSettings>): Record<AgentId, AgentSettings> => {
+  if (!canUseStorage()) {
+    return {
+      heat: { ...store.heat, noDataThresholdMinutes: STALE_DATA_THRESHOLD_MINUTES },
+      air: { ...store.air, noDataThresholdMinutes: STALE_DATA_THRESHOLD_MINUTES },
+      noise: { ...store.noise, noDataThresholdMinutes: STALE_DATA_THRESHOLD_MINUTES },
+    };
+  }
+
+  try {
+    const isMigrated = window.localStorage.getItem(THRESHOLD_MIGRATION_KEY) === '1';
+    if (isMigrated) return store;
+
+    const migrated = {
+      heat: { ...store.heat, noDataThresholdMinutes: STALE_DATA_THRESHOLD_MINUTES },
+      air: { ...store.air, noDataThresholdMinutes: STALE_DATA_THRESHOLD_MINUTES },
+      noise: { ...store.noise, noDataThresholdMinutes: STALE_DATA_THRESHOLD_MINUTES },
+    };
+    window.localStorage.setItem(THRESHOLD_MIGRATION_KEY, '1');
+    return migrated;
+  } catch {
+    return {
+      heat: { ...store.heat, noDataThresholdMinutes: STALE_DATA_THRESHOLD_MINUTES },
+      air: { ...store.air, noDataThresholdMinutes: STALE_DATA_THRESHOLD_MINUTES },
+      noise: { ...store.noise, noDataThresholdMinutes: STALE_DATA_THRESHOLD_MINUTES },
+    };
+  }
+};
 
 const getSeedState = (): Record<AgentId, AgentSettings> => ({
   heat: createDefaultSettings('heat'),
@@ -97,7 +127,7 @@ const loadState = (): Record<AgentId, AgentSettings> => {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as Partial<Record<AgentId, AgentSettings>>;
-        const merged = mergeWithDefaults(parsed);
+        const merged = applyNoDataThresholdMigration(mergeWithDefaults(parsed));
         persistState(merged);
         return merged;
       }
@@ -106,7 +136,7 @@ const loadState = (): Record<AgentId, AgentSettings> => {
     }
   }
 
-  const seeded = getSeedState();
+  const seeded = applyNoDataThresholdMigration(getSeedState());
   persistState(seeded);
   return seeded;
 };

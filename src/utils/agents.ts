@@ -33,9 +33,22 @@ export const AGENTS: AgentDefinition[] = [
   },
 ];
 
-export const STALE_DATA_THRESHOLD_MINUTES = 15;
+export const STALE_DATA_THRESHOLD_MINUTES = 7 * 24 * 60;
+
+const EVENT_STATUS_LABELS: Record<string, string> = {
+  new: 'Новый',
+  inprogress: 'В работе',
+  resolved: 'Устранен',
+  closed: 'Закрыт',
+};
 
 const CLOSED_STATUSES = ['closed', 'resolved', 'done', 'устранено', 'закрыто'];
+
+export const getEventStatusLabel = (status?: string | null) => {
+  if (!status || typeof status !== 'string') return '—';
+  const normalized = status.toLowerCase().replace(/[\s_-]/g, '');
+  return EVENT_STATUS_LABELS[normalized] ?? status;
+};
 
 const collectEventText = (event: EventResponse) => {
   const msg = event.msg ?? {};

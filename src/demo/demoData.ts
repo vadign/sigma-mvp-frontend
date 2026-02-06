@@ -86,6 +86,8 @@ export interface DemoTimeseriesPoint {
   values: Record<string, number>;
 }
 
+type AgentFlags = Partial<Record<AgentId, boolean>>;
+
 const DOMAIN_LABELS: Record<AgentId, string> = {
   heat: 'Теплосети',
   air: 'Качество воздуха',
@@ -1117,7 +1119,7 @@ const NOISE_DBA = [
   48, 47, 46, 45, 44, 45, 52, 58, 54, 50, 49, 48, 47, 46, 50, 57, 60, 55, 51, 49, 48, 46, 45, 44,
 ];
 
-export const createDemoAgents = (options?: { pausedAgents?: Record<AgentId, boolean> }): DemoAgent[] => {
+export const createDemoAgents = (options?: { pausedAgents?: AgentFlags }): DemoAgent[] => {
   const pausedAgents = options?.pausedAgents ?? {};
   return AGENTS.map((agent: AgentDefinition) => ({
     id: agent.id,
@@ -1129,7 +1131,7 @@ export const createDemoAgents = (options?: { pausedAgents?: Record<AgentId, bool
 
 export const createDemoEvents = (
   now: number = Date.now(),
-  options?: { staleAgents?: Record<AgentId, boolean>; extraEvents?: DemoEventOverride[] },
+  options?: { staleAgents?: AgentFlags; extraEvents?: DemoEventOverride[] },
 ): EventResponse[] => {
   const staleAgents = options?.staleAgents ?? {};
   const extraEvents = options?.extraEvents ?? [];
@@ -1175,7 +1177,7 @@ export const createDemoEvents = (
 export const createEventResponseFromOverride = (
   definition: DemoEventOverride,
   now: number = Date.now(),
-  staleAgents: Record<AgentId, boolean> = {},
+  staleAgents: AgentFlags = {},
 ): EventResponse => {
   const staleMinutes = STALE_DATA_THRESHOLD_MINUTES + 45;
   const createdAt =
