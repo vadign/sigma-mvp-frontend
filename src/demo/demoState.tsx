@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
+import { EventResponse } from '../api/types';
 import { AgentId } from '../utils/agents';
 import {
   DemoActionLogEntry,
@@ -7,12 +8,12 @@ import {
   DemoTaskDecision,
   DemoTimeseriesPoint,
   createCriticalHeatEvent,
-  createDemoActionLog,
   createDemoAgents,
-  createDemoEvents,
   createDemoTasksDecisions,
   createDemoTimeseries,
 } from './demoData';
+import { addEventFromOverride, useEventsStore } from '../data/eventsStore';
+import { useActionLogStore } from '../data/actionLogStore';
 
 interface DemoControls {
   noiseDataMissing: boolean;
@@ -25,7 +26,7 @@ interface DemoControls {
 interface DemoDataContextValue {
   now: number;
   agents: DemoAgent[];
-  events: ReturnType<typeof createDemoEvents>;
+  events: EventResponse[];
   actionLog: DemoActionLogEntry[];
   tasksDecisions: DemoTaskDecision[];
   timeseries: Record<AgentId, DemoTimeseriesPoint[]>;
@@ -46,7 +47,6 @@ export const DemoDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     air: false,
     noise: false,
   });
-  const [extraEvents, setExtraEvents] = useState<DemoEventOverride[]>([]);
   const nextEventIdRef = useRef(1000);
 
   const agents = useMemo(
@@ -54,12 +54,8 @@ export const DemoDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     [pausedAgents],
   );
 
-  const events = useMemo(
-    () => createDemoEvents(now, { staleAgents, extraEvents }),
-    [now, staleAgents, extraEvents],
-  );
-
-  const actionLog = useMemo(() => createDemoActionLog(now), [now]);
+  const events = useEventsStore();
+  const actionLog = useActionLogStore();
   const tasksDecisions = useMemo(() => createDemoTasksDecisions(now), [now]);
   const timeseries = useMemo(() => createDemoTimeseries(now), [now]);
 
@@ -75,7 +71,7 @@ export const DemoDataProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const id = nextEventIdRef.current;
     nextEventIdRef.current += 1;
     const timestamp = Date.now();
-    setExtraEvents((prev) => [...prev, createCriticalHeatEvent(id, timestamp)]);
+    addEventFromOverride(createCriticalHeatEvent(id, timestamp) as DemoEventOverride);
   }, []);
 
   const controls = useMemo<DemoControls>(

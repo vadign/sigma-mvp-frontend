@@ -15,25 +15,26 @@ import {
 } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
 import LevelTag from '../components/LevelTag';
-import { fetchDeviations, fetchEvents, fetchLogs, fetchNetworks } from '../api/client';
+import { fetchDeviations, fetchLogs, fetchNetworks } from '../api/client';
 import { DeviationGetResponse, EventResponse, NetworkResponse } from '../api/types';
 import { getSeverityMeta } from '../utils/severity';
 import { YandexTopologyMap } from '../components/maps/YandexTopologyMap';
 import { formatEdgeShortLabel, getDeviationTypeLabel } from '../utils/topologyLabels';
+import { useEventsStore } from '../data/eventsStore';
 
 const { RangePicker } = DatePicker;
 const DEFAULT_DATE_RANGE: [Dayjs, Dayjs] = [dayjs('2026-02-01'), dayjs('2026-02-28')];
 
 function MayorDashboardPage() {
-  const [events, setEvents] = useState<EventResponse[]>([]);
   const [networks, setNetworks] = useState<NetworkResponse[]>([]);
   const [selectedNetwork, setSelectedNetwork] = useState<string | undefined>();
   const [deviations, setDeviations] = useState<DeviationGetResponse[]>([]);
-  const [loading, setLoading] = useState(false);
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null]>(DEFAULT_DATE_RANGE);
   const [level, setLevel] = useState<1 | 2 | 3 | null>(null);
   const [viewMode, setViewMode] = useState<'deviations' | 'events'>('deviations');
   const [selectedEdgeId, setSelectedEdgeId] = useState<number | null>(null);
+  const events = useEventsStore();
+  const loading = false;
 
   useEffect(() => {
     fetchNetworks()
@@ -43,15 +44,6 @@ function MayorDashboardPage() {
       })
       .catch(() => message.error('Не удалось загрузить сети'));
   }, []);
-
-  useEffect(() => {
-    if (viewMode !== 'events') return;
-    setLoading(true);
-    fetchEvents({ limit: 100, order: 'desc', level: level ?? undefined })
-      .then(setEvents)
-      .catch(() => message.error('Ошибка загрузки событий'))
-      .finally(() => setLoading(false));
-  }, [level, viewMode]);
 
   useEffect(() => {
     const loadDeviations = async () => {
@@ -97,9 +89,10 @@ function MayorDashboardPage() {
       const [from, to] = dateRange;
       const withinFrom = from ? date.isAfter(from) || date.isSame(from) : true;
       const withinTo = to ? date.isBefore(to) || date.isSame(to) : true;
-      return withinFrom && withinTo;
+      const matchesLevel = level ? ev.msg?.level === level : true;
+      return withinFrom && withinTo && matchesLevel;
     });
-  }, [events, dateRange]);
+  }, [events, dateRange, level]);
 
   const eventCounts = useMemo(() => {
     const total = filteredEvents.length;
