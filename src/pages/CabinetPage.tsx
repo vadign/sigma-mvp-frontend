@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Badge,
   Button,
@@ -18,9 +18,11 @@ import {
   Typography,
   message,
 } from 'antd';
+import { SettingOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import AgentSettingsModal from '../components/AgentSettingsModal';
 import { EventResponse } from '../api/types';
 import { DemoActionLogEntry, DemoTaskDecision, DemoTimeseriesPoint } from '../demo/demoData';
 import { useDemoData } from '../demo/demoState';
@@ -35,6 +37,7 @@ import {
   resolveAgentIdForEvent,
 } from '../utils/agents';
 import { getSeverityMeta } from '../utils/severity';
+import { getAgentSettings, useAgentSettings } from '../features/agentSettings/store';
 
 interface AgentRow {
   id: AgentId;
@@ -122,13 +125,37 @@ const findFirstResponseMinutes = (event: EventResponse, log: DemoActionLogEntry[
 
 function CabinetPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [form] = Form.useForm<RequestFormValues>();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'assistants'>('overview');
+  const [settingsAgentId, setSettingsAgentId] = useState<AgentId | null>(null);
 
   const { now, agents, events, actionLog, tasksDecisions, timeseries } = useDemoData();
+  useAgentSettings();
   const formValues = Form.useWatch([], form);
+
+  useEffect(() => {
+    const settingsParam = searchParams.get('settings');
+    if (settingsParam === 'heat' || settingsParam === 'air' || settingsParam === 'noise') {
+      setSettingsAgentId(settingsParam);
+    }
+  }, [searchParams]);
+
+  const openSettings = (agentId: AgentId) => {
+    setSettingsAgentId(agentId);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('settings', agentId);
+    setSearchParams(nextParams, { replace: true });
+  };
+
+  const closeSettings = () => {
+    setSettingsAgentId(null);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('settings');
+    setSearchParams(nextParams, { replace: true });
+  };
 
   const isSubmitEnabled = useMemo(() => {
     if (!formValues) return false;
@@ -232,9 +259,11 @@ function CabinetPage() {
         }, null as dayjs.Dayjs | null);
         const lastDataAt = lastEventAt ?? lastActionAt;
 
+        const settings = getAgentSettings(agent.id);
         const minutesAgo = lastDataAt ? dayjs(now).diff(lastDataAt, 'minute') : null;
-        const isStale = minutesAgo == null || minutesAgo > STALE_DATA_THRESHOLD_MINUTES;
-        const status: AgentRow['status'] = agent.isPaused
+        const threshold = settings.noDataThresholdMinutes ?? STALE_DATA_THRESHOLD_MINUTES;
+        const isStale = minutesAgo == null || minutesAgo > threshold;
+        const status: AgentRow['status'] = settings.isPaused
           ? 'Приостановлен'
           : isStale
             ? 'Не получает данные'
@@ -242,7 +271,7 @@ function CabinetPage() {
 
         const updatedAtLabel = lastDataAt ? dayjs(lastDataAt).format('DD.MM.YYYY HH:mm') : '—';
         const updatedAtTooltip = isStale
-          ? `Нет новых данных более ${STALE_DATA_THRESHOLD_MINUTES} минут`
+          ? `Нет новых данных более ${threshold} минут`
           : undefined;
 
         return {
@@ -379,9 +408,7 @@ function CabinetPage() {
       title: 'Помощник',
       dataIndex: 'title',
       render: (_: string, record) => (
-        <Button type="link" onClick={() => navigate(`/cabinet/${record.id}`)} style={{ padding: 0 }}>
-          {record.title}
-        </Button>
+        <Typography.Link onClick={() => navigate(`/cabinet/${record.id}`)}>{record.title}</Typography.Link>
       ),
     },
     {
@@ -400,9 +427,12 @@ function CabinetPage() {
       dataIndex: 'attentionCount',
       align: 'center',
       render: (_: number, record) => (
-        <Button type="link" onClick={() => navigate(`/cabinet/${record.id}`)}>
-          <Tag color={record.attentionCount > 0 ? 'red' : 'default'}>{record.attentionCount}</Tag>
-        </Button>
+        <Typography.Link
+          onClick={() => navigate(`/cabinet/${record.id}`)}
+          style={{ color: record.attentionCount > 0 ? '#cf1322' : undefined, fontWeight: 600 }}
+        >
+          {record.attentionCount}
+        </Typography.Link>
       ),
     },
     {
@@ -434,9 +464,14 @@ function CabinetPage() {
       key: 'action',
       align: 'right',
       render: (_: unknown, record) => (
-        <Button type="link" onClick={() => navigate(`/cabinet/${record.id}`)}>
-          Открыть
-        </Button>
+        <Space>
+          <Tooltip title="Настройки">
+            <Button type="text" icon={<SettingOutlined />} aria-label={`Настройки ${record.title}`} onClick={() => openSettings(record.id)} />
+          </Tooltip>
+          <Button type="link" onClick={() => navigate(`/cabinet/${record.id}`)}>
+            Открыть
+          </Button>
+        </Space>
       ),
     },
   ];
@@ -565,7 +600,7 @@ function CabinetPage() {
                         key: 'agent',
                         render: (_: unknown, record: DemoActionLogEntry) => {
                           const title = agents.find((agent) => agent.id === record.agentId)?.name ?? record.agentId;
-                          return <Tag color="blue">{title}</Tag>;
+                          return <Typography.Text style={{ color: '#1677ff' }}>{title}</Typography.Text>;
                         },
                       },
                       {
@@ -726,6 +761,13 @@ function CabinetPage() {
           </Form.Item>
         </Form>
       </Modal>
+
+      <AgentSettingsModal
+        open={Boolean(settingsAgentId)}
+        agentId={settingsAgentId}
+        settings={settingsAgentId ? getAgentSettings(settingsAgentId) : null}
+        onClose={closeSettings}
+      />
     </div>
   );
 }

@@ -57,7 +57,7 @@ function ensureOwlTurtleMode() {
   });
 }
 
-const editorSize = { width: '100%', height: '720px' };
+const DEFAULT_EDITOR_HEIGHT = '720px';
 
 type ErrorModalState = {
   visible: boolean;
@@ -72,7 +72,17 @@ type ErrorModalState = {
   copyText?: string;
 };
 
-const RegulationsPanel: React.FC = () => {
+interface RegulationsPanelProps {
+  readOnly?: boolean;
+  showHeader?: boolean;
+  editorHeight?: string;
+}
+
+const RegulationsPanel: React.FC<RegulationsPanelProps> = ({
+  readOnly = false,
+  showHeader = true,
+  editorHeight = DEFAULT_EDITOR_HEIGHT,
+}) => {
   const [dataText, setDataText] = useState('');
   const [shapesText, setShapesText] = useState('');
   const [dataDirty, setDataDirty] = useState(false);
@@ -102,8 +112,9 @@ const RegulationsPanel: React.FC = () => {
         theme: 'eclipse',
         lineNumbers: true,
         lineWrapping: true,
+        readOnly: readOnly ? 'nocursor' : false,
       });
-      editor.setSize(editorSize.width, editorSize.height);
+      editor.setSize('100%', editorHeight);
       editor.on('change', (instance) => {
         const value = instance.getValue();
         if (dataSilentChange.current) {
@@ -124,8 +135,9 @@ const RegulationsPanel: React.FC = () => {
         theme: 'eclipse',
         lineNumbers: true,
         lineWrapping: true,
+        readOnly: readOnly ? 'nocursor' : false,
       });
-      editor.setSize(editorSize.width, editorSize.height);
+      editor.setSize('100%', editorHeight);
       editor.on('change', (instance) => {
         const value = instance.getValue();
         if (shapesSilentChange.current) {
@@ -156,7 +168,18 @@ const RegulationsPanel: React.FC = () => {
         shapesEditorRef.current = null;
       }
     };
-  }, []);
+  }, [editorHeight, readOnly]);
+
+  useEffect(() => {
+    if (dataEditorRef.current) {
+      dataEditorRef.current.setOption('readOnly', readOnly ? 'nocursor' : false);
+      dataEditorRef.current.setSize('100%', editorHeight);
+    }
+    if (shapesEditorRef.current) {
+      shapesEditorRef.current.setOption('readOnly', readOnly ? 'nocursor' : false);
+      shapesEditorRef.current.setSize('100%', editorHeight);
+    }
+  }, [editorHeight, readOnly]);
 
   const updateEditorValue = (
     editorRef: React.MutableRefObject<EditorFromTextArea | null>,
@@ -501,17 +524,21 @@ const RegulationsPanel: React.FC = () => {
         </div>
       </Modal>
 
-      <Typography.Title level={2} className="page-title">
-        Цифровые регламенты
-      </Typography.Title>
-      <Typography.Paragraph type="secondary">
-        Правила определяют критичность и формируют рекомендации. Граф валидации задаёт ограничения и проверки структуры
-        данных.
-      </Typography.Paragraph>
-      <Typography.Paragraph className="helper-text" style={{ marginBottom: 16 }}>
-        Регламенты задают пороги и условия, по которым система формирует уровни критичности и рекомендации. Граф
-        валидации описывает проверки полноты и корректности данных для подсистем города.
-      </Typography.Paragraph>
+      {showHeader ? (
+        <>
+          <Typography.Title level={2} className="page-title">
+            Цифровые регламенты
+          </Typography.Title>
+          <Typography.Paragraph type="secondary">
+            Правила определяют критичность и формируют рекомендации. Граф валидации задаёт ограничения и проверки
+            структуры данных.
+          </Typography.Paragraph>
+          <Typography.Paragraph className="helper-text" style={{ marginBottom: 16 }}>
+            Регламенты задают пороги и условия, по которым система формирует уровни критичности и рекомендации. Граф
+            валидации описывает проверки полноты и корректности данных для подсистем города.
+          </Typography.Paragraph>
+        </>
+      ) : null}
 
       {status && <Alert className="status-alert" message={status.text} type={status.type} showIcon />}
 
@@ -527,28 +554,32 @@ const RegulationsPanel: React.FC = () => {
             />
           </div>
           <Space style={{ marginTop: 12 }} wrap>
-            <Button onClick={loadData} loading={dataLoading} disabled={dataLoading || dataExists}>
-              Загрузить
+            <Button onClick={loadData} loading={dataLoading} disabled={dataLoading || (!readOnly && dataExists)}>
+              {readOnly ? 'Обновить' : 'Загрузить'}
             </Button>
-            <Button
-              type="primary"
-              onClick={handleCreateData}
-              disabled={dataLoading || isDataEmpty || dataExists}
-              loading={dataLoading}
-            >
-              Создать
-            </Button>
-            <Button
-              onClick={handleUpdateData}
-              disabled={dataLoading || !dataExists || isDataEmpty || !dataDirty}
-              loading={dataLoading}
-            >
-              Обновить
-            </Button>
-            <Button danger onClick={handleDeleteData} disabled={dataLoading || !dataExists} loading={dataLoading}>
-              Удалить
-            </Button>
-            {dataDirty && <Typography.Text type="warning">Есть несохранённые изменения</Typography.Text>}
+            {!readOnly ? (
+              <>
+                <Button
+                  type="primary"
+                  onClick={handleCreateData}
+                  disabled={dataLoading || isDataEmpty || dataExists}
+                  loading={dataLoading}
+                >
+                  Создать
+                </Button>
+                <Button
+                  onClick={handleUpdateData}
+                  disabled={dataLoading || !dataExists || isDataEmpty || !dataDirty}
+                  loading={dataLoading}
+                >
+                  Обновить
+                </Button>
+                <Button danger onClick={handleDeleteData} disabled={dataLoading || !dataExists} loading={dataLoading}>
+                  Удалить
+                </Button>
+                {dataDirty ? <Typography.Text type="warning">Есть несохранённые изменения</Typography.Text> : null}
+              </>
+            ) : null}
           </Space>
         </Col>
 
@@ -563,28 +594,32 @@ const RegulationsPanel: React.FC = () => {
             />
           </div>
           <Space style={{ marginTop: 12 }} wrap>
-            <Button onClick={loadShapes} loading={shapesLoading} disabled={shapesLoading || shapesExists}>
-              Загрузить
+            <Button onClick={loadShapes} loading={shapesLoading} disabled={shapesLoading || (!readOnly && shapesExists)}>
+              {readOnly ? 'Обновить' : 'Загрузить'}
             </Button>
-            <Button
-              type="primary"
-              onClick={handleCreateShapes}
-              disabled={shapesLoading || isShapesEmpty || shapesExists}
-              loading={shapesLoading}
-            >
-              Создать
-            </Button>
-            <Button
-              onClick={handleUpdateShapes}
-              disabled={shapesLoading || !shapesExists || isShapesEmpty || !shapesDirty}
-              loading={shapesLoading}
-            >
-              Обновить
-            </Button>
-            <Button danger onClick={handleDeleteShapes} disabled={shapesLoading || !shapesExists} loading={shapesLoading}>
-              Удалить
-            </Button>
-            {shapesDirty && <Typography.Text type="warning">Есть несохранённые изменения</Typography.Text>}
+            {!readOnly ? (
+              <>
+                <Button
+                  type="primary"
+                  onClick={handleCreateShapes}
+                  disabled={shapesLoading || isShapesEmpty || shapesExists}
+                  loading={shapesLoading}
+                >
+                  Создать
+                </Button>
+                <Button
+                  onClick={handleUpdateShapes}
+                  disabled={shapesLoading || !shapesExists || isShapesEmpty || !shapesDirty}
+                  loading={shapesLoading}
+                >
+                  Обновить
+                </Button>
+                <Button danger onClick={handleDeleteShapes} disabled={shapesLoading || !shapesExists} loading={shapesLoading}>
+                  Удалить
+                </Button>
+                {shapesDirty ? <Typography.Text type="warning">Есть несохранённые изменения</Typography.Text> : null}
+              </>
+            ) : null}
           </Space>
         </Col>
       </Row>

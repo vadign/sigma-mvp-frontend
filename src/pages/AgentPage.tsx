@@ -6,8 +6,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, type TooltipContentProps } from 'recharts';
 import { fetchEvents } from '../api/client';
 import { EventResponse } from '../api/types';
+import AgentRegulationsPanel from '../components/AgentRegulationsPanel';
 import EventsTable from '../components/EventsTable';
-import RegulationsPanel from '../components/RegulationsPanel';
 import { DemoActionLogEntry, DemoTaskDecision, DemoTimeseriesPoint } from '../demo/demoData';
 import { useDemoData } from '../demo/demoState';
 import {
@@ -18,6 +18,7 @@ import {
   isEventClosed,
 } from '../utils/agents';
 import { getSeverityMeta } from '../utils/severity';
+import { getAgentSettings, useAgentSettings } from '../features/agentSettings/store';
 
 const METRIC_PALETTE = [
   { line: '#36cfc9', fill: 'rgba(54, 207, 201, 0.24)', surface: '#e6fffb' },
@@ -127,6 +128,7 @@ function AgentPage() {
   const { agentId } = useParams();
   const navigate = useNavigate();
   const { now, agents, events, actionLog, tasksDecisions, timeseries } = useDemoData();
+  useAgentSettings();
   const agent = agents.find((item) => item.id === agentId) ?? null;
   const [selectedDomain, setSelectedDomain] = useState<string>('all');
   const [eventFilter, setEventFilter] = useState<'all' | 'active' | 'critical' | 'attention'>('all');
@@ -257,9 +259,11 @@ function AgentPage() {
 
   const statusLabel = useMemo(() => {
     if (!agent) return 'Приостановлен';
-    if (agent.isPaused) return 'Приостановлен';
+    const settings = getAgentSettings(agent.id);
+    if (settings.isPaused) return 'Приостановлен';
     const minutesAgo = lastDataAt ? dayjs(now).diff(lastDataAt, 'minute') : null;
-    const isStale = minutesAgo == null || minutesAgo > STALE_DATA_THRESHOLD_MINUTES;
+    const threshold = settings.noDataThresholdMinutes ?? STALE_DATA_THRESHOLD_MINUTES;
+    const isStale = minutesAgo == null || minutesAgo > threshold;
     return isStale ? 'Не получает данные' : 'Активен';
   }, [agent, lastDataAt, now]);
 
@@ -868,13 +872,13 @@ function AgentPage() {
               </Space>
             ),
           },
+          {
+            key: 'regulations',
+            label: 'Регламенты',
+            children: <AgentRegulationsPanel agentId={agent.id} />,
+          },
           ...(isHeatAgent
             ? [
-                {
-                  key: 'regulations',
-                  label: 'Регламенты',
-                  children: <RegulationsPanel />,
-                },
                 {
                   key: 'incidents',
                   label: 'Инциденты',
