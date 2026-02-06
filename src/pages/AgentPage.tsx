@@ -1053,11 +1053,15 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
               </Space>
             ),
           },
-          {
-            key: 'regulations',
-            label: 'Регламенты',
-            children: <AgentRegulationsPanel agentId={agent.id} />,
-          },
+          ...(!isOperator
+            ? [
+                {
+                  key: 'regulations',
+                  label: 'Регламенты',
+                  children: <AgentRegulationsPanel agentId={agent.id} />,
+                },
+              ]
+            : []),
           ...(isHeatAgent
             ? [
                 {
@@ -1163,24 +1167,28 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
               </Card>
             ),
           },
-          {
-            key: 'actions',
-            label: isOperator ? 'Журнал действий' : 'Журнал действий заместителя',
-            children: (
-              <Card>
-                {actionLogByAgent.length > 0 ? (
-                  <Table
-                    rowKey="id"
-                    columns={actionLogColumns}
-                    dataSource={actionLogByAgent}
-                    pagination={false}
-                  />
-                ) : (
-                  <Empty description="Нет данных по журналу действий" />
-                )}
-              </Card>
-            ),
-          },
+          ...(!isOperator
+            ? [
+                {
+                  key: 'actions',
+                  label: 'Журнал действий заместителя',
+                  children: (
+                    <Card>
+                      {actionLogByAgent.length > 0 ? (
+                        <Table
+                          rowKey="id"
+                          columns={actionLogColumns}
+                          dataSource={actionLogByAgent}
+                          pagination={false}
+                        />
+                      ) : (
+                        <Empty description="Нет данных по журналу действий" />
+                      )}
+                    </Card>
+                  ),
+                },
+              ]
+            : []),
           {
             key: 'tasks',
             label: isOperator ? 'Поручения и решения' : 'Решения и поручения',
