@@ -1166,40 +1166,49 @@ export const createDemoEvents = (
   });
 
   const overrideEvents = extraEvents.map((definition) => {
-    const createdAt =
-      definition.createdAt ??
-      toIso(now - (definition.minutesAgo ?? 0) * 60 * 1000);
-    const updatedAt =
-      definition.updatedAt ??
-      toIso(now - (definition.updatedMinutesAgo ?? definition.minutesAgo ?? 0) * 60 * 1000);
-    const domainLabel = DOMAIN_LABELS[definition.agentId];
-    const forcedUpdatedAt = staleAgents[definition.agentId]
-      ? toIso(now - staleMinutes * 60 * 1000)
-      : updatedAt;
-
-    return {
-      id: definition.id,
-      created_at: createdAt,
-      msg: {
-        domain: domainLabel,
-        title: definition.title,
-        description: definition.description,
-        level: definition.level,
-        status: definition.status,
-        requiresAttention: definition.requiresAttention,
-        updated_at: forcedUpdatedAt,
-        system: domainLabel,
-        subsystem: definition.agentId,
-        category: domainLabel,
-        type: definition.status,
-        location: definition.location,
-        source: definition.source,
-        recommendations: definition.recommendations,
-      },
-    };
+    return createEventResponseFromOverride(definition, now, staleAgents);
   });
 
   return [...baseEvents, ...overrideEvents];
+};
+
+export const createEventResponseFromOverride = (
+  definition: DemoEventOverride,
+  now: number = Date.now(),
+  staleAgents: Record<AgentId, boolean> = {},
+): EventResponse => {
+  const staleMinutes = STALE_DATA_THRESHOLD_MINUTES + 45;
+  const createdAt =
+    definition.createdAt ??
+    toIso(now - (definition.minutesAgo ?? 0) * 60 * 1000);
+  const updatedAt =
+    definition.updatedAt ??
+    toIso(now - (definition.updatedMinutesAgo ?? definition.minutesAgo ?? 0) * 60 * 1000);
+  const domainLabel = DOMAIN_LABELS[definition.agentId];
+  const forcedUpdatedAt = staleAgents[definition.agentId]
+    ? toIso(now - staleMinutes * 60 * 1000)
+    : updatedAt;
+
+  return {
+    id: definition.id,
+    created_at: createdAt,
+    msg: {
+      domain: domainLabel,
+      title: definition.title,
+      description: definition.description,
+      level: definition.level,
+      status: definition.status,
+      requiresAttention: definition.requiresAttention,
+      updated_at: forcedUpdatedAt,
+      system: domainLabel,
+      subsystem: definition.agentId,
+      category: domainLabel,
+      type: definition.status,
+      location: definition.location,
+      source: definition.source,
+      recommendations: definition.recommendations,
+    },
+  };
 };
 
 export const createDemoActionLog = (now: number = Date.now()): DemoActionLogEntry[] => {

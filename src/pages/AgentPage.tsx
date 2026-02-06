@@ -1,15 +1,34 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Badge, Card, Col, Empty, Row, Select, Space, Statistic, Table, Tabs, Tag, Typography } from 'antd';
+import { useMemo, useState } from 'react';
+import {
+  Badge,
+  Button,
+  Card,
+  Col,
+  Empty,
+  Form,
+  Input,
+  Modal,
+  Row,
+  Segmented,
+  Select,
+  Space,
+  Statistic,
+  Table,
+  Tabs,
+  Tag,
+  Typography,
+} from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, type TooltipContentProps } from 'recharts';
-import { fetchEvents } from '../api/client';
 import { EventResponse } from '../api/types';
 import AgentRegulationsPanel from '../components/AgentRegulationsPanel';
 import EventsTable from '../components/EventsTable';
 import { DemoActionLogEntry, DemoTaskDecision, DemoTimeseriesPoint } from '../demo/demoData';
 import { useDemoData } from '../demo/demoState';
+import { addActionLogEntry } from '../data/actionLogStore';
+import { closeEvent } from '../data/eventsStore';
 import {
   STALE_DATA_THRESHOLD_MINUTES,
   filterEventsByAgent,
@@ -17,6 +36,7 @@ import {
   isEventAttention,
   isEventClosed,
 } from '../utils/agents';
+import { isVisibleToMayor } from '../utils/events';
 import { getSeverityMeta } from '../utils/severity';
 import { getAgentSettings, useAgentSettings } from '../features/agentSettings/store';
 
@@ -95,8 +115,11 @@ const resolveIncidentTitle = (incident: EventResponse) => {
 };
 
 const getIncidentRecommendations = (incident: EventResponse): IncidentRecommendation[] => {
-  const recommendations = incident.msg?.recommendation;
+  const recommendations = incident.msg?.recommendation ?? incident.msg?.recommendations;
   if (!Array.isArray(recommendations)) return [];
+  if (recommendations.every((item) => typeof item === 'string')) {
+    return recommendations.map((text) => ({ text, done: false }));
+  }
   return recommendations.filter(
     (item): item is IncidentRecommendation =>
       Boolean(item) && typeof item.text === 'string' && typeof item.done === 'boolean',
@@ -124,18 +147,28 @@ const resolveStatusBadge = (status: 'Активен' | 'Не получает д
   }
 };
 
-function AgentPage() {
-  const { agentId } = useParams();
+export interface AgentWorkspaceProps {
+  agentId?: string;
+  mode?: 'assistant' | 'operator';
+}
+
+export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspaceProps) {
   const navigate = useNavigate();
   const { now, agents, events, actionLog, tasksDecisions, timeseries } = useDemoData();
   useAgentSettings();
   const agent = agents.find((item) => item.id === agentId) ?? null;
+  const isOperator = mode === 'operator';
+  const isHeatAgent = agent?.id === 'heat';
   const [selectedDomain, setSelectedDomain] = useState<string>('all');
   const [eventFilter, setEventFilter] = useState<'all' | 'active' | 'critical' | 'attention'>('all');
   const [activeTab, setActiveTab] = useState<string>('dashboard');
-  const [incidents, setIncidents] = useState<EventResponse[]>([]);
-  const [incidentsLoading, setIncidentsLoading] = useState(false);
-  const [incidentsError, setIncidentsError] = useState<string | null>(null);
+  const [incidentStatusFilter, setIncidentStatusFilter] = useState<'all' | 'active' | 'closed'>('active');
+  const [showMayorOnly, setShowMayorOnly] = useState(false);
+  const [severityFilter, setSeverityFilter] = useState<'all' | 1 | 2 | 3>('all');
+  const [selectedIncident, setSelectedIncident] = useState<EventResponse | null>(null);
+  const [closingIncident, setClosingIncident] = useState<EventResponse | null>(null);
+  const [closeModalOpen, setCloseModalOpen] = useState(false);
+  const [closeForm] = Form.useForm();
 
   const scopedEvents = useMemo(() => {
     if (!agent) return [];
@@ -278,31 +311,6 @@ function AgentPage() {
     return Array.from(unique);
   }, [scopedEvents]);
 
-  useEffect(() => {
-    if (!agent || agent.id !== 'heat') {
-      return;
-    }
-    let isActive = true;
-    setIncidentsLoading(true);
-    setIncidentsError(null);
-    fetchEvents({ order: 'desc', limit: 50 })
-      .then((data) => {
-        if (!isActive) return;
-        setIncidents(data);
-      })
-      .catch((error: unknown) => {
-        if (!isActive) return;
-        setIncidentsError(error instanceof Error ? error.message : 'Не удалось загрузить список инцидентов.');
-      })
-      .finally(() => {
-        if (!isActive) return;
-        setIncidentsLoading(false);
-      });
-    return () => {
-      isActive = false;
-    };
-  }, [agent]);
-
   const filteredEvents = useMemo(() => {
     const domainFiltered =
       selectedDomain === 'all'
@@ -325,9 +333,25 @@ function AgentPage() {
   }, [scopedEvents, selectedDomain, eventFilter]);
 
   const attentionRegistry = useMemo(
-    () => scopedEvents.filter((event) => event.msg?.requiresAttention === true),
+    () => scopedEvents.filter(isEventAttention),
     [scopedEvents],
   );
+
+  const mayorVisibleEvents = useMemo(
+    () => scopedEvents.filter(isVisibleToMayor),
+    [scopedEvents],
+  );
+
+  const mayorTopEvents = useMemo(() => {
+    return [...mayorVisibleEvents]
+      .sort((a, b) => {
+        const levelWeight = (value?: number) => (value === 1 ? 3 : value === 2 ? 2 : value === 3 ? 1 : 0);
+        const levelDiff = levelWeight(b.msg?.level) - levelWeight(a.msg?.level);
+        if (levelDiff !== 0) return levelDiff;
+        return dayjs(b.msg?.updated_at ?? b.created_at).valueOf() - dayjs(a.msg?.updated_at ?? a.created_at).valueOf();
+      })
+      .slice(0, 5);
+  }, [mayorVisibleEvents]);
 
   const recentActions = useMemo(() => {
     return [...actionLogByAgent]
@@ -340,6 +364,11 @@ function AgentPage() {
       .sort((a, b) => dayjs(a.dueAt).diff(dayjs(b.dueAt)))
       .slice(0, 8);
   }, [tasksByAgent]);
+
+  const incidents = useMemo(() => {
+    if (!isHeatAgent) return [];
+    return [...scopedEvents].sort((a, b) => dayjs(b.created_at).valueOf() - dayjs(a.created_at).valueOf());
+  }, [isHeatAgent, scopedEvents]);
 
   const incidentColumns = useMemo<ColumnsType<EventResponse>>(
     () => [
@@ -404,6 +433,87 @@ function AgentPage() {
       },
     ],
     [],
+  );
+
+  const operatorIncidents = useMemo(() => {
+    let filtered = incidents;
+    if (incidentStatusFilter === 'active') {
+      filtered = filtered.filter((event) => event.msg?.status === 'New' || event.msg?.status === 'InProgress');
+    }
+    if (incidentStatusFilter === 'closed') {
+      filtered = filtered.filter((event) => isEventClosed(event));
+    }
+    if (showMayorOnly) {
+      filtered = filtered.filter(isVisibleToMayor);
+    }
+    if (severityFilter !== 'all') {
+      filtered = filtered.filter((event) => event.msg?.level === severityFilter);
+    }
+    return filtered;
+  }, [incidents, incidentStatusFilter, severityFilter, showMayorOnly]);
+
+  const operatorIncidentColumns = useMemo<ColumnsType<EventResponse>>(
+    () => [
+      {
+        title: 'Инцидент',
+        dataIndex: 'msg',
+        render: (_: unknown, incident: EventResponse) => (
+          <Space direction="vertical" size={2}>
+            <Typography.Text strong>{resolveIncidentTitle(incident)}</Typography.Text>
+            <Typography.Text type="secondary">{incident.msg?.description ?? 'Описание отсутствует'}</Typography.Text>
+          </Space>
+        ),
+      },
+      {
+        title: 'Статус',
+        dataIndex: ['msg', 'status'],
+        render: (value?: string) => {
+          const isClosed = value === 'Resolved' || value === 'Closed';
+          return <Tag color={isClosed ? 'green' : 'blue'}>{value ?? '—'}</Tag>;
+        },
+      },
+      {
+        title: 'Критичность',
+        dataIndex: ['msg', 'level'],
+        render: (_: unknown, record) => {
+          const level = (record.msg?.level ?? 3) as 1 | 2 | 3;
+          const meta = getSeverityMeta(level);
+          return <Tag color={meta.color}>{meta.tagText}</Tag>;
+        },
+      },
+      {
+        title: 'Локация',
+        dataIndex: ['msg', 'location', 'address'],
+        render: (value?: string) => value ?? '—',
+      },
+      {
+        title: 'Создан',
+        dataIndex: 'created_at',
+        render: (value: string) => dayjs(value).format('DD.MM.YYYY HH:mm'),
+      },
+      {
+        title: 'Действия',
+        dataIndex: 'id',
+        render: (_: unknown, record) => {
+          const isActive = record.msg?.status === 'New' || record.msg?.status === 'InProgress';
+          return (
+            <Button
+              size="small"
+              type="primary"
+              disabled={!isActive}
+              onClick={(event) => {
+                event.stopPropagation();
+                setClosingIncident(record);
+                setCloseModalOpen(true);
+              }}
+            >
+              Закрыть инцидент
+            </Button>
+          );
+        },
+      },
+    ],
+    [setClosingIncident, setCloseModalOpen],
   );
 
   const lastDayEvents = useMemo(() => {
@@ -605,6 +715,38 @@ function AgentPage() {
     },
   ];
 
+  const handleCloseIncident = async () => {
+    try {
+      const values = await closeForm.validateFields();
+      if (!closingIncident) return;
+      closeEvent(closingIncident.id, {
+        status: values.status,
+        comment: values.comment,
+        reason: values.reason,
+        closedBy: 'Оператор теплосетей',
+      });
+      addActionLogEntry({
+        agentId: 'heat',
+        actionType: 'comment',
+        timestamp: new Date().toISOString(),
+        summary: `Оператор закрыл инцидент: ${resolveIncidentTitle(closingIncident)}`,
+        relatedEventId: closingIncident.id,
+        resultStatus: 'success',
+      });
+      setCloseModalOpen(false);
+      setClosingIncident(null);
+      closeForm.resetFields();
+    } catch (error) {
+      // validation error handled by form
+    }
+  };
+
+  const handleCloseModalCancel = () => {
+    setCloseModalOpen(false);
+    setClosingIncident(null);
+    closeForm.resetFields();
+  };
+
   const handleEventNavigation = (filter: 'all' | 'active' | 'critical' | 'attention') => {
     setEventFilter(filter);
     setActiveTab('registry');
@@ -631,19 +773,22 @@ function AgentPage() {
   }
 
   const updatedLabel = lastDataAt ? lastDataAt.format('DD.MM.YYYY HH:mm') : '—';
-  const isHeatAgent = agent.id === 'heat';
+  const pageTitle = isOperator ? 'Кабинет оператора: Теплосети' : agent.name;
+  const pageSubtitle = isOperator
+    ? `Оператор теплосетей · Последние данные: ${updatedLabel}`
+    : `${agent.responsibilityZone} · Последние данные: ${updatedLabel}`;
 
   return (
     <div className="page-shell">
       <div>
         <Space align="center">
           <Typography.Title level={3} className="page-title">
-            {agent.name}
+            {pageTitle}
           </Typography.Title>
           {resolveStatusBadge(statusLabel)}
         </Space>
         <Typography.Paragraph type="secondary">
-          {agent.responsibilityZone} · Последние данные: {updatedLabel}
+          {pageSubtitle}
         </Typography.Paragraph>
       </div>
 
@@ -723,6 +868,42 @@ function AgentPage() {
                     </Card>
                   </Col>
                 </Row>
+
+                {isOperator && (
+                  <Card
+                    title="Инциденты, видимые мэру"
+                    extra={(
+                      <Button
+                        type="link"
+                        onClick={() => {
+                          setIncidentStatusFilter('active');
+                          setShowMayorOnly(true);
+                          setActiveTab('incidents');
+                        }}
+                      >
+                        Перейти к инцидентам
+                      </Button>
+                    )}
+                  >
+                    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                      <Statistic title="Требуют внимания мэра" value={mayorVisibleEvents.length} />
+                      {mayorTopEvents.length > 0 ? (
+                        <Space direction="vertical" size="small">
+                          {mayorTopEvents.map((event) => (
+                            <Space key={event.id} align="center">
+                              <Tag color={getSeverityMeta((event.msg?.level ?? 3) as 1 | 2 | 3).color}>
+                                {getSeverityMeta((event.msg?.level ?? 3) as 1 | 2 | 3).tagText}
+                              </Tag>
+                              <Typography.Text>{resolveIncidentTitle(event)}</Typography.Text>
+                            </Space>
+                          ))}
+                        </Space>
+                      ) : (
+                        <Empty description="Нет инцидентов, видимых мэру" />
+                      )}
+                    </Space>
+                  </Card>
+                )}
 
                 <Card title="Активность помощника">
                   {recentActions.length > 0 ? (
@@ -882,22 +1063,64 @@ function AgentPage() {
                 {
                   key: 'incidents',
                   label: 'Инциденты',
-                  children: (
+                  children: isOperator ? (
                     <Card>
                       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-                        {incidentsError && <Typography.Text type="danger">{incidentsError}</Typography.Text>}
+                        <Space wrap align="center">
+                          <Typography.Text type="secondary">Статус:</Typography.Text>
+                          <Segmented
+                            value={incidentStatusFilter}
+                            onChange={(value) => setIncidentStatusFilter(value as 'all' | 'active' | 'closed')}
+                            options={[
+                              { label: 'Все', value: 'all' },
+                              { label: 'Активные', value: 'active' },
+                              { label: 'Закрытые', value: 'closed' },
+                            ]}
+                          />
+                          <Typography.Text type="secondary">Видимые мэру:</Typography.Text>
+                          <Segmented
+                            value={showMayorOnly ? 'yes' : 'no'}
+                            onChange={(value) => setShowMayorOnly(value === 'yes')}
+                            options={[
+                              { label: 'Все', value: 'no' },
+                              { label: 'Только видимые', value: 'yes' },
+                            ]}
+                          />
+                          <Typography.Text type="secondary">Критичность:</Typography.Text>
+                          <Select
+                            value={severityFilter}
+                            onChange={(value) => setSeverityFilter(value as 'all' | 1 | 2 | 3)}
+                            style={{ minWidth: 140 }}
+                            options={[
+                              { value: 'all', label: 'Все уровни' },
+                              { value: 1, label: 'Критичный' },
+                              { value: 2, label: 'Высокий' },
+                              { value: 3, label: 'Средний' },
+                            ]}
+                          />
+                        </Space>
+                        <Table
+                          rowKey="id"
+                          dataSource={operatorIncidents}
+                          columns={operatorIncidentColumns}
+                          pagination={{ pageSize: 8 }}
+                          locale={{ emptyText: 'Инциденты не найдены.' }}
+                          onRow={(record) => ({
+                            onClick: () => setSelectedIncident(record),
+                          })}
+                        />
+                      </Space>
+                    </Card>
+                  ) : (
+                    <Card>
+                      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
                         <Table
                           rowKey="id"
                           className="incident-table"
                           columns={incidentColumns}
                           dataSource={incidents}
-                          loading={incidentsLoading}
                           pagination={{ pageSize: 5 }}
-                          locale={{
-                            emptyText: incidentsError
-                              ? 'Не удалось загрузить инциденты.'
-                              : 'Инциденты не найдены.',
-                          }}
+                          locale={{ emptyText: 'Инциденты не найдены.' }}
                         />
                       </Space>
                     </Card>
@@ -942,7 +1165,7 @@ function AgentPage() {
           },
           {
             key: 'actions',
-            label: 'Журнал действий заместителя',
+            label: isOperator ? 'Журнал действий' : 'Журнал действий заместителя',
             children: (
               <Card>
                 {actionLogByAgent.length > 0 ? (
@@ -960,7 +1183,7 @@ function AgentPage() {
           },
           {
             key: 'tasks',
-            label: 'Решения и поручения',
+            label: isOperator ? 'Поручения и решения' : 'Решения и поручения',
             children: (
               <Card>
                 {tasksByAgent.length > 0 ? (
@@ -1087,8 +1310,90 @@ function AgentPage() {
           },
         ]}
       />
+      {isOperator && (
+        <>
+          <Modal
+            open={selectedIncident !== null}
+            onCancel={() => setSelectedIncident(null)}
+            footer={null}
+            title="Детали инцидента"
+          >
+            {selectedIncident && (
+              <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                <Typography.Text strong>{resolveIncidentTitle(selectedIncident)}</Typography.Text>
+                <Typography.Text>{selectedIncident.msg?.description ?? 'Описание отсутствует'}</Typography.Text>
+                <Space wrap>
+                  <Tag>{`Статус: ${selectedIncident.msg?.status ?? '—'}`}</Tag>
+                  <Tag>{`Критичность: ${selectedIncident.msg?.level ?? '—'}`}</Tag>
+                  <Tag>{`Адрес: ${selectedIncident.msg?.location?.address ?? '—'}`}</Tag>
+                </Space>
+                <Typography.Text type="secondary">
+                  Создан: {dayjs(selectedIncident.created_at).format('DD.MM.YYYY HH:mm')}
+                </Typography.Text>
+                <Typography.Text type="secondary">
+                  Обновлен: {selectedIncident.msg?.updated_at ? dayjs(selectedIncident.msg?.updated_at).format('DD.MM.YYYY HH:mm') : '—'}
+                </Typography.Text>
+                {selectedIncident.msg?.closeComment && (
+                  <Typography.Text type="secondary">
+                    Комментарий закрытия: {selectedIncident.msg?.closeComment}
+                  </Typography.Text>
+                )}
+              </Space>
+            )}
+          </Modal>
+          <Modal
+            open={closeModalOpen}
+            onCancel={handleCloseModalCancel}
+            onOk={handleCloseIncident}
+            okText="Закрыть"
+            title="Закрыть инцидент?"
+          >
+            <Form layout="vertical" form={closeForm}>
+              <Form.Item
+                label="Итоговый статус"
+                name="status"
+                initialValue="Resolved"
+                rules={[{ required: true, message: 'Выберите статус' }]}
+              >
+                <Select
+                  options={[
+                    { value: 'Resolved', label: 'Устранен (Resolved)' },
+                    { value: 'Closed', label: 'Закрыт (Closed)' },
+                  ]}
+                />
+              </Form.Item>
+              <Form.Item
+                label="Комментарий оператора"
+                name="comment"
+                rules={[
+                  { required: true, message: 'Комментарий обязателен' },
+                  { min: 5, message: 'Минимум 5 символов' },
+                ]}
+              >
+                <Input.TextArea rows={4} placeholder="Опишите результат и дальнейшие шаги" />
+              </Form.Item>
+              <Form.Item label="Причина/категория" name="reason">
+                <Select
+                  allowClear
+                  options={[
+                    { value: 'Авария устранена', label: 'Авария устранена' },
+                    { value: 'Ложное срабатывание', label: 'Ложное срабатывание' },
+                    { value: 'Дублирующее событие', label: 'Дублирующее событие' },
+                    { value: 'Данные некорректны', label: 'Данные некорректны' },
+                  ]}
+                />
+              </Form.Item>
+            </Form>
+          </Modal>
+        </>
+      )}
     </div>
   );
+}
+
+function AgentPage() {
+  const { agentId } = useParams();
+  return <AgentWorkspace agentId={agentId} mode="assistant" />;
 }
 
 export default AgentPage;

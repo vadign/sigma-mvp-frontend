@@ -7,6 +7,7 @@ import {
   NotificationOutlined,
   InteractionOutlined,
   UserOutlined,
+  UserSwitchOutlined,
   CodeOutlined,
 } from '@ant-design/icons';
 import { useMemo } from 'react';
@@ -21,12 +22,14 @@ import ScenarioPage from './pages/ScenarioPage';
 import CabinetPage from './pages/CabinetPage';
 import AgentPage from './pages/AgentPage';
 import DevCabinetPage from './pages/DevCabinetPage';
+import OperatorHeatPage from './pages/OperatorHeatPage';
 import ChatWidget from './components/chat/ChatWidget';
 
 const { Header, Content } = Layout;
 
 const tabs = [
   { key: 'cabinet', label: 'Личный кабинет', icon: <UserOutlined />, path: '/cabinet' },
+  { key: 'operator-heat', label: 'Кабинет оператора', icon: <UserSwitchOutlined />, path: '/operator/heat' },
   { key: 'intro', label: 'Вступление', icon: <InfoCircleOutlined />, path: '/intro', hidden: true },
   { key: 'topology', label: 'Топология и отклонения', icon: <ApartmentOutlined />, path: '/topology' },
   { key: 'regulations', label: 'Регламенты', icon: <FileProtectOutlined />, path: '/regulations' },
@@ -75,6 +78,7 @@ function AppLayout() {
           <Route path="/" element={<Navigate to="/cabinet" replace />} />
           <Route path="/cabinet" element={<CabinetPage />} />
           <Route path="/cabinet/:agentId" element={<AgentPage />} />
+          <Route path="/operator/heat" element={<OperatorHeatPage />} />
           <Route path="/intro" element={<IntroPage />} />
           <Route path="/topology" element={<DataAndTopologyPage />} />
           <Route path="/regulations" element={<RegulationsPage />} />
