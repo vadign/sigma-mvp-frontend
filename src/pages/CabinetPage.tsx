@@ -397,7 +397,7 @@ function CabinetPage() {
         key: 'avg-response',
         title: 'Среднее время реакции',
         value: avgResponseTime == null ? '—' : `${avgResponseTime} мин`,
-        hint: avgResponseTime == null ? 'Недостаточно данных для расчета' : 'По первым действиям notify/assign_task',
+        hint: avgResponseTime == null ? 'Недостаточно данных для расчета' : undefined,
         onClick: () => setActiveTab('assistants'),
       },
     ],
@@ -572,8 +572,11 @@ function CabinetPage() {
                       {
                         title: 'Статус',
                         key: 'status',
+                        width: 150,
                         render: (_: unknown, record) => (
-                          <Badge status={isEventClosed(record) ? 'default' : 'processing'} text={getEventStatusLabel(record.msg?.status)} />
+                          <span className="event-status-nowrap">
+                            <Badge status={isEventClosed(record) ? 'default' : 'processing'} text={getEventStatusLabel(record.msg?.status)} />
+                          </span>
                         ),
                       },
                     ]}

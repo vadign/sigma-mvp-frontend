@@ -165,6 +165,15 @@ body {
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
+.kpi-card-col {
+  display: flex;
+}
+
+.kpi-card-col .kpi-card-uniform {
+  width: 100%;
+  height: 100%;
+}
+
 .metric-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 22px 44px rgba(15, 23, 42, 0.16);
@@ -241,6 +250,12 @@ body {
   padding: 2px 10px;
   font-size: 12px;
   margin: 0;
+}
+
+.event-status-nowrap,
+.event-status-nowrap .ant-badge,
+.event-status-nowrap .ant-badge-status-text {
+  white-space: nowrap;
 }
 
 .page-title {

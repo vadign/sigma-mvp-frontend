@@ -834,13 +834,13 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
                 </Card>
 
                 <Row gutter={[16, 16]}>
-                  <Col xs={24} md={8} lg={4}>
-                    <Card hoverable onClick={() => handleEventNavigation('active')}>
+                  <Col xs={24} md={8} lg={4} className="kpi-card-col">
+                    <Card className="kpi-card-uniform" hoverable onClick={() => handleEventNavigation('active')}>
                       <Statistic title="Активные инциденты" value={kpi.active} />
                     </Card>
                   </Col>
-                  <Col xs={24} md={8} lg={4}>
-                    <Card hoverable onClick={() => handleEventNavigation('critical')}>
+                  <Col xs={24} md={8} lg={4} className="kpi-card-col">
+                    <Card className="kpi-card-uniform" hoverable onClick={() => handleEventNavigation('critical')}>
                       <Statistic
                         title="Критичные инциденты"
                         value={kpi.critical}
@@ -848,23 +848,23 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
                       />
                     </Card>
                   </Col>
-                  <Col xs={24} md={8} lg={4}>
-                    <Card hoverable onClick={() => handleEventNavigation('attention')}>
+                  <Col xs={24} md={8} lg={4} className="kpi-card-col">
+                    <Card className="kpi-card-uniform" hoverable onClick={() => handleEventNavigation('attention')}>
                       <Statistic title="Требуют вмешательства" value={kpi.attention} />
                     </Card>
                   </Col>
-                  <Col xs={24} md={8} lg={4}>
-                    <Card hoverable onClick={handleTaskNavigation}>
+                  <Col xs={24} md={8} lg={4} className="kpi-card-col">
+                    <Card className="kpi-card-uniform" hoverable onClick={handleTaskNavigation}>
                       <Statistic title="Поручения в работе" value={tasksInWorkCount} />
                     </Card>
                   </Col>
-                  <Col xs={24} md={8} lg={4}>
-                    <Card hoverable onClick={handleTaskNavigation}>
+                  <Col xs={24} md={8} lg={4} className="kpi-card-col">
+                    <Card className="kpi-card-uniform" hoverable onClick={handleTaskNavigation}>
                       <Statistic title="Просрочено поручений" value={overdueTasksCount} />
                     </Card>
                   </Col>
-                  <Col xs={24} md={8} lg={4}>
-                    <Card>
+                  <Col xs={24} md={8} lg={4} className="kpi-card-col">
+                    <Card className="kpi-card-uniform">
                       <Statistic title="Среднее время реакции" value={formatDuration(kpi.avgResponse)} />
                     </Card>
                   </Col>
