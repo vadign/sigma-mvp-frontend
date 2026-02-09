@@ -278,8 +278,9 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
   const agent = agents.find((item) => item.id === agentId) ?? null;
   const isOperator = mode === 'operator';
   const isHeatAgent = agent?.id === 'heat';
-  const [operatorEvents, setOperatorEvents] = useState<EventResponse[]>([]);
+  const [operatorEvents, setOperatorEvents] = useState<EventResponse[]>(demoEvents);
   const [operatorEventsLoading, setOperatorEventsLoading] = useState(false);
+  const [operatorEventsSource, setOperatorEventsSource] = useState<'backend' | 'demo'>('demo');
   const [selectedDomain, setSelectedDomain] = useState<string>('all');
   const [eventFilter, setEventFilter] = useState<'all' | 'active' | 'critical' | 'attention'>('all');
   const [activeTab, setActiveTab] = useState<string>('dashboard');
@@ -305,13 +306,23 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
     try {
       const data = await getEvents({ order: 'desc', limit: 200 });
       setOperatorEvents(data);
+      setOperatorEventsSource('backend');
       setSelectedIncident((prev) => (prev ? data.find((item) => item.id === prev.id) ?? prev : prev));
     } catch (error) {
       message.error('Не удалось загрузить инциденты оператора');
+      setOperatorEvents(demoEvents);
+      setOperatorEventsSource('demo');
     } finally {
       setOperatorEventsLoading(false);
     }
-  }, [isOperator]);
+  }, [demoEvents, isOperator]);
+
+  useEffect(() => {
+    if (!isOperator) return;
+    if (operatorEventsSource === 'demo') {
+      setOperatorEvents(demoEvents);
+    }
+  }, [demoEvents, isOperator, operatorEventsSource]);
 
   useEffect(() => {
     loadOperatorEvents();
