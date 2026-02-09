@@ -77,6 +77,30 @@ export interface EmailSubscriptionUpdateRequest {
 
 export interface EventResponse {
   id: number;
+  source_id?: string | null;
   msg: Record<string, any>;
   created_at: string;
+}
+
+export interface EventStepUpdate {
+  id?: string | number | null;
+  status?: string | null;
+  done?: boolean | null;
+  completed?: boolean | null;
+  result?: string | null;
+  text?: string | null;
+  description?: string | null;
+}
+
+export interface EventUpdateRequest {
+  status?: string | null;
+  comment?: string | null;
+  reason?: string | null;
+  closeComment?: string | null;
+  closeReason?: string | null;
+  steps?: EventStepUpdate[] | Record<string, any>[] | string[] | null;
+  actions?: EventStepUpdate[] | Record<string, any>[] | string[] | null;
+  recommendations?: EventStepUpdate[] | Record<string, any>[] | string[] | null;
+  regulations?: EventStepUpdate[] | Record<string, any>[] | string[] | null;
+  decisions?: EventStepUpdate[] | Record<string, any>[] | string[] | null;
 }

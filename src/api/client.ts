@@ -6,6 +6,7 @@ import {
   EmailSubscriptionResponse,
   EmailSubscriptionUpdateRequest,
   EventResponse,
+  EventUpdateRequest,
   LogsGetResponse,
   NetworkResponse,
   NodeGetResponse,
@@ -15,6 +16,10 @@ import {
 
 const api = axios.create({
   baseURL: 'http://109.202.1.153:8965',
+});
+
+const eventsPatchApi = axios.create({
+  baseURL: 'http://109.202.1.153:8967',
 });
 
 export const fetchNetworks = async (): Promise<NetworkResponse[]> => {
@@ -80,6 +85,19 @@ export const updateRegulationsShapes = (body: string) =>
 export const clearRegulationsData = () => api.delete('/api/v1/regulations/data');
 export const clearRegulationsShapes = () => api.delete('/api/v1/regulations/shapes');
 
+export const getEvents = async (params: {
+  date_from?: string | null;
+  date_to?: string | null;
+  order?: 'asc' | 'desc';
+  level?: 1 | 2 | 3 | null;
+  limit?: number;
+  skip?: number;
+  network_id?: string | null;
+}): Promise<EventResponse[]> => {
+  const { data } = await api.get<EventResponse[]>('/api/v1/events', { params });
+  return data;
+};
+
 export const fetchEvents = async (params: {
   date_from?: string | null;
   date_to?: string | null;
@@ -87,9 +105,15 @@ export const fetchEvents = async (params: {
   level?: 1 | 2 | 3 | null;
   limit?: number;
   skip?: number;
-}): Promise<EventResponse[]> => {
-  const { data } = await api.get<EventResponse[]>('/api/v1/events', { params });
-  return data;
+  network_id?: string | null;
+}): Promise<EventResponse[]> => getEvents(params);
+
+export const patchEvent = async (
+  sourceId: string,
+  eventId: number,
+  payload: EventUpdateRequest,
+): Promise<void> => {
+  await eventsPatchApi.patch(`/api/v1/sources/${sourceId}/events/${eventId}`, payload);
 };
 
 export const fetchUsers = async (): Promise<UserResponse[]> => {
@@ -136,4 +160,3 @@ export const deleteSubscription = (userId: string, subscriptionId: number) =>
 export const clearTelegramSubscriptions = () => api.delete('/api/v1/admin/telegram_subscriptions/clear');
 
 export default api;
-
