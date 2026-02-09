@@ -22,6 +22,15 @@
   --radius-button: 14px;
   --radius-card: 18px;
   --focus-ring: 0 0 0 3px rgba(59, 130, 246, 0.45);
+  --field-bg: rgba(255, 255, 255, 0.38);
+  --field-bg-hover: rgba(255, 255, 255, 0.52);
+  --field-bg-active: rgba(255, 255, 255, 0.62);
+  --field-border: rgba(100, 116, 139, 0.52);
+  --field-border-hover: rgba(59, 130, 246, 0.58);
+  --field-border-active: rgba(37, 99, 235, 0.82);
+  --field-disabled-bg: rgba(226, 232, 240, 0.48);
+  --field-placeholder: rgba(71, 85, 105, 0.72);
+  --field-error-border: rgba(220, 38, 38, 0.72);
   --page-side-padding: 20px;
 }
 
@@ -442,23 +451,104 @@ body {
 }
 
 .ant-input,
+.ant-input-affix-wrapper,
+.ant-input-number,
 .ant-select-selector,
 .ant-picker {
   border-radius: 12px !important;
-  border-color: var(--surface-border) !important;
-  background: var(--surface-glass-strong) !important;
+  border-color: var(--field-border) !important;
+  background: var(--field-bg) !important;
+  box-shadow: none !important;
+  color: var(--text-primary) !important;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.ant-input-affix-wrapper .ant-input {
+  background: transparent !important;
+  border: none !important;
   box-shadow: none !important;
 }
 
+.ant-input:hover,
+.ant-input-affix-wrapper:hover,
+.ant-input-number:hover,
+.ant-select:not(.ant-select-disabled):hover .ant-select-selector,
+.ant-picker:hover {
+  border-color: var(--field-border-hover) !important;
+  background: var(--field-bg-hover) !important;
+}
+
+.ant-input::placeholder,
+.ant-input-affix-wrapper .ant-input::placeholder,
+.ant-input-number-input::placeholder,
+.ant-picker-input > input::placeholder,
+.ant-select-selection-placeholder {
+  color: var(--field-placeholder) !important;
+}
+
+.ant-input:focus,
 .ant-input:focus-visible,
+.ant-input-affix-wrapper:focus,
+.ant-input-affix-wrapper:focus-visible,
+.ant-input-affix-wrapper-focused,
+.ant-input-number-focused,
+.ant-input-number:focus-within,
+.ant-select-selector:focus,
 .ant-select-selector:focus-visible,
 .ant-picker:focus-visible,
+.ant-picker:focus,
 .ant-input-focused,
 .ant-select-focused .ant-select-selector,
+.ant-select-open .ant-select-selector,
 .ant-picker-focused {
   outline: none !important;
   box-shadow: var(--focus-ring) !important;
-  border-color: rgba(59, 130, 246, 0.6) !important;
+  border-color: var(--field-border-active) !important;
+  background: var(--field-bg-active) !important;
+}
+
+.ant-input[disabled],
+.ant-input-affix-wrapper.ant-input-affix-wrapper-disabled,
+.ant-input-number.ant-input-number-disabled,
+.ant-select-disabled .ant-select-selector,
+.ant-picker.ant-picker-disabled {
+  background: var(--field-disabled-bg) !important;
+  border-color: rgba(148, 163, 184, 0.42) !important;
+  color: rgba(71, 85, 105, 0.68) !important;
+}
+
+.ant-form-item-has-error .ant-input,
+.ant-form-item-has-error .ant-input-affix-wrapper,
+.ant-form-item-has-error .ant-input-number,
+.ant-form-item-has-error .ant-select-selector,
+.ant-form-item-has-error .ant-picker {
+  border-color: var(--field-error-border) !important;
+}
+
+.ant-form-item-has-error .ant-input:focus,
+.ant-form-item-has-error .ant-input:focus-visible,
+.ant-form-item-has-error .ant-input-affix-wrapper-focused,
+.ant-form-item-has-error .ant-input-number-focused,
+.ant-form-item-has-error .ant-select-focused .ant-select-selector,
+.ant-form-item-has-error .ant-picker-focused {
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.2) !important;
+}
+
+.ant-select-dropdown {
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid var(--field-border);
+  border-radius: 12px;
+  box-shadow: var(--surface-shadow);
+  backdrop-filter: blur(var(--surface-blur));
+  -webkit-backdrop-filter: blur(var(--surface-blur));
+}
+
+.ant-select-item-option-active:not(.ant-select-item-option-disabled) {
+  background: rgba(47, 107, 255, 0.14) !important;
+}
+
+.ant-select-item-option-selected:not(.ant-select-item-option-disabled) {
+  background: rgba(47, 107, 255, 0.22) !important;
 }
 
 .ant-tag {
