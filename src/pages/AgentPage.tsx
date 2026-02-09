@@ -1,13 +1,15 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Badge,
   Button,
   Card,
   Col,
+  Divider,
   Empty,
   Form,
   Input,
   Modal,
+  Radio,
   Row,
   Segmented,
   Select,
@@ -17,6 +19,7 @@ import {
   Tabs,
   Tag,
   Typography,
+  message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
@@ -28,7 +31,7 @@ import EventsTable from '../components/EventsTable';
 import { DemoActionLogEntry, DemoTaskDecision, DemoTimeseriesPoint } from '../demo/demoData';
 import { useDemoData } from '../demo/demoState';
 import { addActionLogEntry } from '../data/actionLogStore';
-import { closeEvent } from '../data/eventsStore';
+import { getEvents, patchEvent } from '../api/client';
 import {
   STALE_DATA_THRESHOLD_MINUTES,
   filterEventsByAgent,
@@ -107,6 +110,121 @@ type IncidentRecommendation = {
   text: string;
 };
 
+type IncidentStepStatus = 'done' | 'not_done' | 'unset';
+
+type IncidentStepState = {
+  id: string;
+  title: string;
+  description?: string;
+  status: IncidentStepStatus;
+  raw: unknown;
+};
+
+const STEP_KEYS = ['steps', 'actions', 'recommendations', 'regulations', 'decisions'] as const;
+type StepKey = typeof STEP_KEYS[number];
+
+const resolveStepStatus = (value: unknown): IncidentStepStatus => {
+  if (typeof value === 'boolean') return value ? 'done' : 'not_done';
+  if (typeof value === 'string') {
+    const normalized = value.toLowerCase().replace(/[\s_-]/g, '');
+    if (['done', 'completed', 'success', 'выполнено', 'true', 'yes'].includes(normalized)) return 'done';
+    if (['notdone', 'failed', 'error', 'невыполнено', 'false', 'no'].includes(normalized)) return 'not_done';
+  }
+  return 'unset';
+};
+
+const resolveStepTitle = (step: Record<string, any>, index: number) =>
+  step.title || step.name || step.text || step.label || step.description || `Шаг ${index + 1}`;
+
+const resolveStepDescription = (step: Record<string, any>) =>
+  step.description || step.details || step.note || step.summary || '';
+
+const buildIncidentSteps = (incident: EventResponse | null) => {
+  if (!incident?.msg) return { key: null as StepKey | null, steps: [] as IncidentStepState[] };
+  const msg = incident.msg ?? {};
+  const entry = STEP_KEYS.find((key) => Array.isArray(msg?.[key]));
+  if (!entry) return { key: null as StepKey | null, steps: [] as IncidentStepState[] };
+  const rawSteps = msg?.[entry] as unknown[];
+  const steps = rawSteps.map((item, index) => {
+    if (typeof item === 'string') {
+      return {
+        id: `${entry}-${index}`,
+        title: item,
+        status: 'unset' as IncidentStepStatus,
+        raw: item,
+      };
+    }
+    if (item && typeof item === 'object') {
+      const step = item as Record<string, any>;
+      const status =
+        resolveStepStatus(step.done ?? step.completed ?? step.status ?? step.result ?? step.state ?? step.outcome);
+      return {
+        id: String(step.id ?? step.step_id ?? step.code ?? `${entry}-${index}`),
+        title: resolveStepTitle(step, index),
+        description: resolveStepDescription(step),
+        status,
+        raw: item,
+      };
+    }
+    return {
+      id: `${entry}-${index}`,
+      title: `Шаг ${index + 1}`,
+      status: 'unset' as IncidentStepStatus,
+      raw: item,
+    };
+  });
+  return { key: entry, steps };
+};
+
+const resolveStepStatusMeta = (status: IncidentStepStatus) => {
+  const map: Record<IncidentStepStatus, { color: string; label: string }> = {
+    done: { color: 'green', label: 'Выполнено' },
+    not_done: { color: 'red', label: 'Не выполнено' },
+    unset: { color: 'default', label: 'Не отмечено' },
+  };
+  return map[status];
+};
+
+const resolveEventSourceId = (event: EventResponse | null) => {
+  if (!event) return null;
+  if (typeof event.source_id === 'string') return event.source_id;
+  const msg = event.msg ?? {};
+  if (typeof msg.source_id === 'string') return msg.source_id;
+  if (typeof msg.sourceId === 'string') return msg.sourceId;
+  if (typeof msg.source === 'string') return msg.source;
+  if (msg.source && typeof msg.source.id === 'string') return msg.source.id;
+  return null;
+};
+
+const buildStepsPayload = (key: StepKey | null, steps: IncidentStepState[]) => {
+  if (!key) return null;
+  const updated = steps.map((step) => {
+    if (step.status === 'unset') return step.raw;
+    const done = step.status === 'done';
+    const raw = step.raw;
+    if (typeof raw === 'string') {
+      return { text: raw, done };
+    }
+    if (raw && typeof raw === 'object') {
+      const updatedStep = { ...(raw as Record<string, any>) };
+      if ('done' in updatedStep) {
+        updatedStep.done = done;
+      } else if ('completed' in updatedStep) {
+        updatedStep.completed = done;
+      } else if ('status' in updatedStep) {
+        updatedStep.status = done ? 'done' : 'not_done';
+      } else if ('result' in updatedStep) {
+        updatedStep.result = done ? 'done' : 'not_done';
+      } else {
+        updatedStep.done = done;
+      }
+      return updatedStep;
+    }
+    return raw;
+  });
+  return { [key]: updated };
+};
+
 const resolveIncidentTitle = (incident: EventResponse) => {
   const msg = incident.msg ?? {};
   if (msg.text && typeof msg.text === 'string') return msg.text;
@@ -155,11 +273,13 @@ export interface AgentWorkspaceProps {
 
 export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspaceProps) {
   const navigate = useNavigate();
-  const { now, agents, events, actionLog, tasksDecisions, timeseries } = useDemoData();
+  const { now, agents, events: demoEvents, actionLog, tasksDecisions, timeseries } = useDemoData();
   useAgentSettings();
   const agent = agents.find((item) => item.id === agentId) ?? null;
   const isOperator = mode === 'operator';
   const isHeatAgent = agent?.id === 'heat';
+  const [operatorEvents, setOperatorEvents] = useState<EventResponse[]>([]);
+  const [operatorEventsLoading, setOperatorEventsLoading] = useState(false);
   const [selectedDomain, setSelectedDomain] = useState<string>('all');
   const [eventFilter, setEventFilter] = useState<'all' | 'active' | 'critical' | 'attention'>('all');
   const [activeTab, setActiveTab] = useState<string>('dashboard');
@@ -169,7 +289,41 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
   const [selectedIncident, setSelectedIncident] = useState<EventResponse | null>(null);
   const [closingIncident, setClosingIncident] = useState<EventResponse | null>(null);
   const [closeModalOpen, setCloseModalOpen] = useState(false);
+  const [closeSaving, setCloseSaving] = useState(false);
+  const [stepsSaving, setStepsSaving] = useState(false);
+  const [incidentSteps, setIncidentSteps] = useState<IncidentStepState[]>([]);
+  const [incidentStepsKey, setIncidentStepsKey] = useState<StepKey | null>(null);
+  const initialStepsRef = useRef<IncidentStepState[]>([]);
+  const [stepsDirty, setStepsDirty] = useState(false);
   const [closeForm] = Form.useForm();
+
+  const events = isOperator ? operatorEvents : demoEvents;
+
+  const loadOperatorEvents = useCallback(async () => {
+    if (!isOperator) return;
+    setOperatorEventsLoading(true);
+    try {
+      const data = await getEvents({ order: 'desc', limit: 200 });
+      setOperatorEvents(data);
+      setSelectedIncident((prev) => (prev ? data.find((item) => item.id === prev.id) ?? prev : prev));
+    } catch (error) {
+      message.error('Не удалось загрузить инциденты оператора');
+    } finally {
+      setOperatorEventsLoading(false);
+    }
+  }, [isOperator]);
+
+  useEffect(() => {
+    loadOperatorEvents();
+  }, [loadOperatorEvents]);
+
+  useEffect(() => {
+    const { key, steps } = buildIncidentSteps(selectedIncident);
+    setIncidentStepsKey(key);
+    setIncidentSteps(steps);
+    initialStepsRef.current = steps;
+    setStepsDirty(false);
+  }, [selectedIncident]);
 
   const scopedEvents = useMemo(() => {
     if (!agent) return [];
@@ -497,11 +651,12 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
         dataIndex: 'id',
         render: (_: unknown, record) => {
           const isActive = record.msg?.status === 'New' || record.msg?.status === 'InProgress';
+          const hasSource = Boolean(resolveEventSourceId(record));
           return (
             <Button
               size="small"
               type="primary"
-              disabled={!isActive}
+              disabled={!isActive || !hasSource}
               onClick={(event) => {
                 event.stopPropagation();
                 setClosingIncident(record);
@@ -720,11 +875,16 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
     try {
       const values = await closeForm.validateFields();
       if (!closingIncident) return;
-      closeEvent(closingIncident.id, {
+      const sourceId = resolveEventSourceId(closingIncident);
+      if (!sourceId) {
+        message.error('Не удалось определить источник инцидента для закрытия');
+        return;
+      }
+      setCloseSaving(true);
+      await patchEvent(sourceId, closingIncident.id, {
         status: values.status,
         comment: values.comment,
         reason: values.reason,
-        closedBy: 'Оператор теплосетей',
       });
       addActionLogEntry({
         agentId: 'heat',
@@ -734,11 +894,18 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
         relatedEventId: closingIncident.id,
         resultStatus: 'success',
       });
+      await loadOperatorEvents();
       setCloseModalOpen(false);
       setClosingIncident(null);
       closeForm.resetFields();
+      message.success('Инцидент обновлен');
     } catch (error) {
-      // validation error handled by form
+      const err = error as { errorFields?: unknown };
+      if (!err?.errorFields) {
+        message.error('Не удалось сохранить закрытие инцидента');
+      }
+    } finally {
+      setCloseSaving(false);
     }
   };
 
@@ -746,6 +913,40 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
     setCloseModalOpen(false);
     setClosingIncident(null);
     closeForm.resetFields();
+  };
+
+  const handleStepStatusChange = (id: string, status: IncidentStepStatus) => {
+    setIncidentSteps((prev) => {
+      const next = prev.map((step) => (step.id === id ? { ...step, status } : step));
+      const dirty = next.some((step, index) => step.status !== initialStepsRef.current[index]?.status);
+      setStepsDirty(dirty);
+      return next;
+    });
+  };
+
+  const handleSaveSteps = async () => {
+    if (!selectedIncident) return;
+    const sourceId = resolveEventSourceId(selectedIncident);
+    if (!sourceId) {
+      message.error('Не удалось определить источник инцидента для сохранения шагов');
+      return;
+    }
+    const payload = buildStepsPayload(incidentStepsKey, incidentSteps);
+    if (!payload) {
+      message.error('Шаги по инциденту недоступны для сохранения');
+      return;
+    }
+    setStepsSaving(true);
+    try {
+      await patchEvent(sourceId, selectedIncident.id, payload);
+      message.success('Шаги сохранены');
+      await loadOperatorEvents();
+      setStepsDirty(false);
+    } catch (error) {
+      message.error('Не удалось сохранить шаги');
+    } finally {
+      setStepsSaving(false);
+    }
   };
 
   const handleEventNavigation = (filter: 'all' | 'active' | 'critical' | 'attention') => {
@@ -756,6 +957,9 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
   const handleTaskNavigation = () => {
     setActiveTab('tasks');
   };
+
+  const selectedIncidentSourceId = resolveEventSourceId(selectedIncident);
+  const canSaveSteps = Boolean(selectedIncident && incidentStepsKey && selectedIncidentSourceId);
 
   if (!agent) {
     return (
@@ -1108,6 +1312,7 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
                           rowKey="id"
                           dataSource={operatorIncidents}
                           columns={operatorIncidentColumns}
+                          loading={operatorEventsLoading}
                           pagination={{ pageSize: 8 }}
                           locale={{ emptyText: 'Инциденты не найдены.' }}
                           onRow={(record) => ({
@@ -1163,7 +1368,7 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
                       ]}
                     />
                   </Space>
-                  <EventsTable events={filteredEvents} />
+                  <EventsTable events={filteredEvents} loading={isOperator && operatorEventsLoading} />
                 </Space>
               </Card>
             ),
@@ -1214,7 +1419,7 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
             children: (
               <Card>
                 {attentionRegistry.length > 0 ? (
-                  <EventsTable events={attentionRegistry} />
+                  <EventsTable events={attentionRegistry} loading={isOperator && operatorEventsLoading} />
                 ) : (
                   <Empty description="Нет событий, требующих внимания" />
                 )}
@@ -1347,6 +1552,57 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
                     Комментарий закрытия: {selectedIncident.msg?.closeComment}
                   </Typography.Text>
                 )}
+                <Divider style={{ margin: '8px 0' }} />
+                <Typography.Text strong>Шаги по инциденту</Typography.Text>
+                {incidentSteps.length > 0 ? (
+                  <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                    {incidentSteps.map((step, index) => {
+                      const meta = resolveStepStatusMeta(step.status);
+                      const showUnset = step.status === 'unset';
+                      return (
+                        <div key={step.id} className="incident-step-row">
+                          <div className="incident-step-index">{index + 1}</div>
+                          <div className="incident-step-body">
+                            <Typography.Text strong>{step.title}</Typography.Text>
+                            {step.description ? (
+                              <Typography.Text type="secondary" className="incident-step-description">
+                                {step.description}
+                              </Typography.Text>
+                            ) : null}
+                            <Space wrap size="small">
+                              <Tag color={meta.color}>{meta.label}</Tag>
+                              <Radio.Group
+                                value={step.status}
+                                onChange={(event) => handleStepStatusChange(step.id, event.target.value)}
+                                disabled={!canSaveSteps || stepsSaving}
+                                options={[
+                                  { label: 'Выполнено', value: 'done' },
+                                  { label: 'Не выполнено', value: 'not_done' },
+                                  ...(showUnset ? [{ label: 'Не отмечено', value: 'unset' }] : []),
+                                ]}
+                              />
+                            </Space>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {!selectedIncidentSourceId && (
+                      <Typography.Text type="secondary">
+                        Источник события не определён — сохранение шагов недоступно.
+                      </Typography.Text>
+                    )}
+                    <Button
+                      type="primary"
+                      onClick={handleSaveSteps}
+                      loading={stepsSaving}
+                      disabled={!stepsDirty || !canSaveSteps}
+                    >
+                      Сохранить изменения
+                    </Button>
+                  </Space>
+                ) : (
+                  <Typography.Text type="secondary">Шаги недоступны для этого инцидента.</Typography.Text>
+                )}
               </Space>
             )}
           </Modal>
@@ -1355,6 +1611,7 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
             onCancel={handleCloseModalCancel}
             onOk={handleCloseIncident}
             okText="Закрыть"
+            confirmLoading={closeSaving}
             title="Закрыть инцидент?"
           >
             <Form layout="vertical" form={closeForm}>
