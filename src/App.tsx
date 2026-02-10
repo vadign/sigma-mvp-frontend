@@ -30,13 +30,13 @@ const { Header, Content } = Layout;
 const tabs = [
   { key: 'cabinet', label: 'Личный кабинет', icon: <UserOutlined />, path: '/cabinet' },
   { key: 'operator-heat', label: 'Кабинет оператора', icon: <UserSwitchOutlined />, path: '/operator/heat' },
+  { key: 'dev-cabinet', label: 'Кабинет разработчика', icon: <CodeOutlined />, path: '/dev-cabinet' },
   { key: 'intro', label: 'Вступление', icon: <InfoCircleOutlined />, path: '/intro', hidden: true },
   { key: 'topology', label: 'Топология и отклонения', icon: <ApartmentOutlined />, path: '/topology' },
   { key: 'regulations', label: 'Регламенты', icon: <FileProtectOutlined />, path: '/regulations' },
-  { key: 'mayor', label: 'Дашборд мэра', icon: <CrownOutlined />, path: '/mayor' },
-  { key: 'notifications', label: 'Уведомления', icon: <NotificationOutlined />, path: '/notifications' },
+  { key: 'mayor', label: 'Дашборд мэра', icon: <CrownOutlined />, path: '/mayor', hidden: true },
+  { key: 'notifications', label: 'Уведомления', icon: <NotificationOutlined />, path: '/notifications', hidden: true },
   { key: 'scenario', label: 'Сквозной кейс', icon: <InteractionOutlined />, path: '/scenario' },
-  { key: 'dev-cabinet', label: 'Кабинет разработчика', icon: <CodeOutlined />, path: '/dev-cabinet' },
 ];
 
 function AppLayout() {

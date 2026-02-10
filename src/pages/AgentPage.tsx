@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Badge,
   Button,
@@ -17,12 +17,14 @@ import {
   Tabs,
   Tag,
   Typography,
+  message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, type TooltipContentProps } from 'recharts';
 import { EventResponse } from '../api/types';
+import { fetchEvents } from '../api/client';
 import AgentRegulationsPanel from '../components/AgentRegulationsPanel';
 import EventsTable from '../components/EventsTable';
 import { DemoActionLogEntry, DemoTaskDecision, DemoTimeseriesPoint } from '../demo/demoData';
@@ -155,7 +157,7 @@ export interface AgentWorkspaceProps {
 
 export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspaceProps) {
   const navigate = useNavigate();
-  const { now, agents, events, actionLog, tasksDecisions, timeseries } = useDemoData();
+  const { now, agents, events: demoEvents, actionLog, tasksDecisions, timeseries } = useDemoData();
   useAgentSettings();
   const agent = agents.find((item) => item.id === agentId) ?? null;
   const isOperator = mode === 'operator';
@@ -169,19 +171,51 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
   const [selectedIncident, setSelectedIncident] = useState<EventResponse | null>(null);
   const [closingIncident, setClosingIncident] = useState<EventResponse | null>(null);
   const [closeModalOpen, setCloseModalOpen] = useState(false);
+  const [assistantEvents, setAssistantEvents] = useState<EventResponse[]>([]);
+  const [assistantEventsLoading, setAssistantEventsLoading] = useState(false);
   const [closeForm] = Form.useForm();
+
+  useEffect(() => {
+    if (isOperator) return;
+    let isCancelled = false;
+
+    const loadAssistantEvents = async () => {
+      setAssistantEventsLoading(true);
+      try {
+        const data = await fetchEvents({ order: 'desc', limit: 10, skip: 0 });
+        if (!isCancelled) {
+          setAssistantEvents(data);
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          setAssistantEvents([]);
+          message.error('Не удалось загрузить события');
+        }
+      } finally {
+        if (!isCancelled) {
+          setAssistantEventsLoading(false);
+        }
+      }
+    };
+
+    loadAssistantEvents();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isOperator]);
+
+  const events = isOperator ? demoEvents : assistantEvents;
 
   const scopedEvents = useMemo(() => {
     if (!agent) return [];
-    return filterEventsByAgent(events, agent.id);
+    const matchedEvents = filterEventsByAgent(events, agent.id);
+    return matchedEvents.length > 0 ? matchedEvents : events;
   }, [agent, events]);
 
   const activeEvents = useMemo(
     () =>
-      scopedEvents.filter((event) => {
-        const status = event.msg?.status;
-        return status === 'New' || status === 'InProgress';
-      }),
+      scopedEvents.filter((event) => !isEventClosed(event)),
     [scopedEvents],
   );
 
@@ -196,10 +230,7 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
   );
 
   const attentionCount = useMemo(
-    () =>
-      scopedEvents.filter(
-        (event) => event.msg?.requiresAttention === true && !isEventClosed(event),
-      ).length,
+    () => scopedEvents.filter(isEventAttention).length,
     [scopedEvents],
   );
 
@@ -313,20 +344,24 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
   }, [scopedEvents]);
 
   const filteredEvents = useMemo(() => {
-    const domainFiltered =
+    const strictDomainFiltered =
       selectedDomain === 'all'
         ? scopedEvents
         : scopedEvents.filter((event) => event.msg?.domain === selectedDomain);
+    const domainFiltered = strictDomainFiltered.length > 0 ? strictDomainFiltered : scopedEvents;
     switch (eventFilter) {
-      case 'active':
-        return domainFiltered.filter((event) => {
-          const status = event.msg?.status;
-          return status === 'New' || status === 'InProgress';
-        });
-      case 'critical':
-        return domainFiltered.filter((event) => event.msg?.level === 1 || event.msg?.level === 2);
-      case 'attention':
-        return domainFiltered.filter((event) => event.msg?.requiresAttention === true && !isEventClosed(event));
+      case 'active': {
+        const filtered = domainFiltered.filter((event) => !isEventClosed(event));
+        return filtered.length > 0 ? filtered : domainFiltered;
+      }
+      case 'critical': {
+        const filtered = domainFiltered.filter((event) => event.msg?.level === 1 || event.msg?.level === 2);
+        return filtered.length > 0 ? filtered : domainFiltered;
+      }
+      case 'attention': {
+        const filtered = domainFiltered.filter(isEventAttention);
+        return filtered.length > 0 ? filtered : domainFiltered;
+      }
       case 'all':
       default:
         return domainFiltered;
@@ -439,7 +474,7 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
   const operatorIncidents = useMemo(() => {
     let filtered = incidents;
     if (incidentStatusFilter === 'active') {
-      filtered = filtered.filter((event) => event.msg?.status === 'New' || event.msg?.status === 'InProgress');
+      filtered = filtered.filter((event) => !isEventClosed(event));
     }
     if (incidentStatusFilter === 'closed') {
       filtered = filtered.filter((event) => isEventClosed(event));
@@ -450,7 +485,7 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
     if (severityFilter !== 'all') {
       filtered = filtered.filter((event) => event.msg?.level === severityFilter);
     }
-    return filtered;
+    return filtered.length > 0 ? filtered : incidents;
   }, [incidents, incidentStatusFilter, severityFilter, showMayorOnly]);
 
   const operatorIncidentColumns = useMemo<ColumnsType<EventResponse>>(
@@ -496,7 +531,7 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
         title: 'Действия',
         dataIndex: 'id',
         render: (_: unknown, record) => {
-          const isActive = record.msg?.status === 'New' || record.msg?.status === 'InProgress';
+          const isActive = !isEventClosed(record);
           return (
             <Button
               size="small"
@@ -508,7 +543,7 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
                 setCloseModalOpen(true);
               }}
             >
-              Закрыть инцидент
+              Завершить
             </Button>
           );
         },
@@ -1067,7 +1102,7 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
             ? [
                 {
                   key: 'incidents',
-                  label: 'Инциденты',
+                  label: isOperator ? 'Требуют внимания' : 'Инциденты',
                   children: isOperator ? (
                     <Card>
                       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
@@ -1124,6 +1159,7 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
                           className="incident-table"
                           columns={incidentColumns}
                           dataSource={incidents}
+                          loading={assistantEventsLoading}
                           pagination={{ pageSize: 5 }}
                           locale={{ emptyText: 'Инциденты не найдены.' }}
                         />
@@ -1163,7 +1199,7 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
                       ]}
                     />
                   </Space>
-                  <EventsTable events={filteredEvents} />
+                  <EventsTable events={filteredEvents} loading={!isOperator && assistantEventsLoading} />
                 </Space>
               </Card>
             ),
@@ -1208,19 +1244,23 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
               </Card>
             ),
           },
-          {
-            key: 'attention',
-            label: 'Требуют вмешательства',
-            children: (
-              <Card>
-                {attentionRegistry.length > 0 ? (
-                  <EventsTable events={attentionRegistry} />
-                ) : (
-                  <Empty description="Нет событий, требующих внимания" />
-                )}
-              </Card>
-            ),
-          },
+          ...(!isOperator
+            ? [
+                {
+                  key: 'attention',
+                  label: 'Требуют вмешательства',
+                  children: (
+                    <Card>
+                      {attentionRegistry.length > 0 ? (
+                        <EventsTable events={attentionRegistry} loading={!isOperator && assistantEventsLoading} />
+                      ) : (
+                        <Empty description="Нет событий, требующих внимания" />
+                      )}
+                    </Card>
+                  ),
+                },
+              ]
+            : []),
           {
             key: 'dynamics',
             label: 'Динамика и проблемные зоны',
@@ -1354,8 +1394,8 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
             open={closeModalOpen}
             onCancel={handleCloseModalCancel}
             onOk={handleCloseIncident}
-            okText="Закрыть"
-            title="Закрыть инцидент?"
+            okText="Завершить"
+            title="Завершить инцидент?"
           >
             <Form layout="vertical" form={closeForm}>
               <Form.Item
