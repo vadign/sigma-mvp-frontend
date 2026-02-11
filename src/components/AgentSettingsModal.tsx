@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Button, Checkbox, Input, InputNumber, Modal, Select, Space, Switch, Tabs, Typography, message } from 'antd';
 import { AgentId } from '../utils/agents';
 import { AGENT_DOMAIN_LABELS } from '../features/agentSettings/regulations';
-import { AgentSettings, AgentSettingsPatch, DecisionMode, SeverityKey, resetAgentSettings, updateAgentSettings } from '../features/agentSettings/store';
+import { AgentSettings, AgentSettingsPatch, DecisionMode, resetAgentSettings, updateAgentSettings } from '../features/agentSettings/store';
 import AgentRegulationsPanel from './AgentRegulationsPanel';
 
 const DECISION_MODE_OPTIONS = [
@@ -22,13 +22,6 @@ const RECIPIENT_OPTIONS: Record<AgentId, string[]> = {
   heat: ['Диспетчер', 'Руководитель смены'],
   air: ['Эколог дежурный', 'Руководитель смены'],
   noise: ['Диспетчер', 'Руководитель смены'],
-};
-
-const SEVERITY_LABELS: Record<SeverityKey, string> = {
-  low: 'Низкая',
-  medium: 'Средняя',
-  high: 'Высокая',
-  critical: 'Критическая',
 };
 
 function AgentSettingsModal({ open, agentId, settings, onClose }: AgentSettingsModalProps) {
@@ -126,29 +119,6 @@ function AgentSettingsModal({ open, agentId, settings, onClose }: AgentSettingsM
                       style={{ width: '100%', marginTop: 8 }}
                       onChange={(value) => updateDraft({ decisionMode: value })}
                     />
-                  </div>
-                  <div>
-                    <Typography.Text strong>Маппинг по критичности</Typography.Text>
-                    <Space direction="vertical" style={{ width: '100%', marginTop: 8 }}>
-                      {(Object.keys(SEVERITY_LABELS) as SeverityKey[]).map((severity) => (
-                        <Space key={severity} style={{ width: '100%', justifyContent: 'space-between' }}>
-                          <Typography.Text>{SEVERITY_LABELS[severity]}</Typography.Text>
-                          <Select
-                            value={draft.decisionModesBySeverity?.[severity]}
-                            options={DECISION_MODE_OPTIONS as unknown as { value: DecisionMode; label: string }[]}
-                            style={{ width: 260 }}
-                            onChange={(value) =>
-                              updateDraft({
-                                decisionModesBySeverity: {
-                                  ...(draft.decisionModesBySeverity ?? {}),
-                                  [severity]: value,
-                                },
-                              })
-                            }
-                          />
-                        </Space>
-                      ))}
-                    </Space>
                   </div>
                 </Space>
               ),

@@ -739,6 +739,7 @@ body {
 .chat-message-text {
   color: var(--text-primary);
   font-size: 14px;
+  white-space: pre-line;
 }
 
 @keyframes fadeInUp {

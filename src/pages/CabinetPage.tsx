@@ -606,11 +606,6 @@ function CabinetPage() {
                         Последнее обновление: {lastDataAtGlobal ? dayjs(lastDataAtGlobal).format('DD.MM.YYYY HH:mm:ss') : '—'}
                       </Typography.Text>
                     </div>
-                    <Space wrap>
-                      <Tag color="green">Активны: {assistantsByStatus.active}</Tag>
-                      <Tag color="gold">Не получают данные: {assistantsByStatus.stale}</Tag>
-                      <Tag>Приостановлены: {assistantsByStatus.paused}</Tag>
-                    </Space>
                   </Space>
                 </Card>
 

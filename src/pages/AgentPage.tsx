@@ -831,6 +831,7 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
       <Tabs
         activeKey={activeTab}
         onChange={setActiveTab}
+        tabBarGutter={16}
         items={[
           {
             key: 'dashboard',
@@ -1263,7 +1264,7 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
             : []),
           {
             key: 'dynamics',
-            label: 'Динамика и проблемные зоны',
+            label: 'Динамика',
             children: (
               <Card>
                 <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -1357,7 +1358,10 @@ export function AgentWorkspace({ agentId, mode = 'assistant' }: AgentWorkspacePr
               </Card>
             ),
           },
-        ]}
+        ].filter((item, index, items) => {
+          if (item.label !== 'Дашборд') return true;
+          return items.findIndex((candidate) => candidate.label === 'Дашборд') === index;
+        })}
       />
       {isOperator && (
         <>
