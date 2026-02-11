@@ -11,6 +11,7 @@ import {
   Select,
   Space,
   Statistic,
+  Switch,
   Table,
   Tabs,
   Tag,
@@ -18,7 +19,6 @@ import {
   Typography,
   message,
 } from 'antd';
-import { SettingOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -38,7 +38,7 @@ import {
   resolveAgentIdForEvent,
 } from '../utils/agents';
 import { getSeverityMeta } from '../utils/severity';
-import { getAgentSettings, useAgentSettings } from '../features/agentSettings/store';
+import { getAgentSettings, updateAgentSettings, useAgentSettings } from '../features/agentSettings/store';
 
 interface AgentRow {
   id: AgentId;
@@ -52,6 +52,7 @@ interface AgentRow {
   lastDataAt: dayjs.Dayjs | null;
   updatedAtLabel: string;
   updatedAtTooltip?: string;
+  decisionMode: 'recommend' | 'confirm' | 'auto';
 }
 
 interface RequestFormValues {
@@ -109,6 +110,30 @@ const resolveActionTypeColor = (actionType: DemoActionLogEntry['actionType']) =>
   return map[actionType];
 };
 
+const resolveDecisionModeMeta = (mode: AgentRow['decisionMode']) => {
+  switch (mode) {
+    case 'auto':
+      return { label: 'Автономно', color: 'green' };
+    case 'recommend':
+      return { label: 'Рекомендовать', color: 'blue' };
+    case 'confirm':
+    default:
+      return { label: 'С подтверждением', color: 'gold' };
+  }
+};
+
+const resolveCompactStatusMeta = (status: AgentRow['status']) => {
+  switch (status) {
+    case 'Активен':
+      return { label: 'Активен', color: 'green' };
+    case 'Не получает данные':
+      return { label: 'Нет данных', color: 'gold' };
+    case 'Приостановлен':
+    default:
+      return { label: 'Пауза', color: 'default' };
+  }
+};
+
 const resolveTaskOverdue = (task: DemoTaskDecision, now: number) => {
   return task.status === 'Overdue' || (dayjs(task.dueAt).isBefore(dayjs(now)) && task.status !== 'Done');
 };
@@ -130,17 +155,18 @@ function CabinetPage() {
   const [form] = Form.useForm<RequestFormValues>();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'assistants'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'assistants' | 'settings'>('overview');
   const [settingsAgentId, setSettingsAgentId] = useState<AgentId | null>(null);
 
   const { now, agents, events, actionLog, tasksDecisions, timeseries } = useDemoData();
-  useAgentSettings();
+  const agentSettingsStore = useAgentSettings();
   const formValues = Form.useWatch([], form);
 
   useEffect(() => {
     const settingsParam = searchParams.get('settings');
     if (settingsParam === 'heat' || settingsParam === 'air' || settingsParam === 'noise') {
       setSettingsAgentId(settingsParam);
+      setActiveTab('settings');
     }
   }, [searchParams]);
 
@@ -156,6 +182,12 @@ function CabinetPage() {
     const nextParams = new URLSearchParams(searchParams);
     nextParams.delete('settings');
     setSearchParams(nextParams, { replace: true });
+  };
+
+  const toggleAssistantEnabled = (agentId: AgentId, enabled: boolean) => {
+    updateAgentSettings(agentId, { isPaused: !enabled });
+    const assistantName = agents.find((agent) => agent.id === agentId)?.name ?? 'Помощник';
+    message.success(`${assistantName}: ${enabled ? 'включен' : 'выключен'}`);
   };
 
   const isSubmitEnabled = useMemo(() => {
@@ -260,7 +292,7 @@ function CabinetPage() {
         }, null as dayjs.Dayjs | null);
         const lastDataAt = lastEventAt ?? lastActionAt;
 
-        const settings = getAgentSettings(agent.id);
+        const settings = agentSettingsStore[agent.id] ?? getAgentSettings(agent.id);
         const minutesAgo = lastDataAt ? dayjs(now).diff(lastDataAt, 'minute') : null;
         const threshold = settings.noDataThresholdMinutes ?? STALE_DATA_THRESHOLD_MINUTES;
         const isStale = minutesAgo == null || minutesAgo > threshold;
@@ -274,7 +306,6 @@ function CabinetPage() {
         const updatedAtTooltip = isStale
           ? `Нет новых данных более ${threshold} минут`
           : undefined;
-
         return {
           id: agent.id,
           title: agent.name,
@@ -287,13 +318,14 @@ function CabinetPage() {
           lastDataAt,
           updatedAtLabel,
           updatedAtTooltip,
+          decisionMode: settings.decisionMode,
         };
       })
       .sort((a, b) => {
         if (b.attentionCount !== a.attentionCount) return b.attentionCount - a.attentionCount;
         return b.criticalIncidents - a.criticalIncidents;
       });
-  }, [agents, events, tasksDecisions, now, actionLog]);
+  }, [agents, events, tasksDecisions, now, actionLog, agentSettingsStore]);
 
   const assistantsByStatus = useMemo(
     () =>
@@ -466,13 +498,75 @@ function CabinetPage() {
       align: 'right',
       render: (_: unknown, record) => (
         <Space>
-          <Tooltip title="Настройки">
-            <Button type="text" icon={<SettingOutlined />} aria-label={`Настройки ${record.title}`} onClick={() => openSettings(record.id)} />
-          </Tooltip>
           <Button type="link" onClick={() => navigate(`/cabinet/${record.id}`)}>
             Открыть
           </Button>
         </Space>
+      ),
+    },
+  ];
+
+  const settingsColumns: ColumnsType<AgentRow> = [
+    {
+      title: 'Помощник',
+      dataIndex: 'title',
+      width: 220,
+      render: (_: string, record) => (
+        <Tooltip title={record.title}>
+          <Typography.Link
+            onClick={() => navigate(`/cabinet/${record.id}`)}
+            style={{ display: 'inline-block', maxWidth: 210, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          >
+            {record.title}
+          </Typography.Link>
+        </Tooltip>
+      ),
+    },
+    {
+      title: 'Статус',
+      dataIndex: 'status',
+      width: 130,
+      render: (_: string, record) =>
+        record.updatedAtTooltip ? (
+          <Tooltip title={record.updatedAtTooltip}>
+            <Tag color={resolveCompactStatusMeta(record.status).color}>{resolveCompactStatusMeta(record.status).label}</Tag>
+          </Tooltip>
+        ) : (
+          <Tag color={resolveCompactStatusMeta(record.status).color}>{resolveCompactStatusMeta(record.status).label}</Tag>
+        ),
+    },
+    {
+      title: 'Режим решений',
+      dataIndex: 'decisionMode',
+      width: 190,
+      render: (value: AgentRow['decisionMode']) => {
+        const meta = resolveDecisionModeMeta(value);
+        return <Tag color={meta.color}>{meta.label}</Tag>;
+      },
+    },
+    {
+      title: 'Вкл/Выкл',
+      key: 'enabled',
+      align: 'center',
+      width: 110,
+      render: (_: unknown, record) => (
+        <Switch
+          checked={record.status !== 'Приостановлен'}
+          checkedChildren="Вкл"
+          unCheckedChildren="Выкл"
+          onChange={(value) => toggleAssistantEnabled(record.id, value)}
+        />
+      ),
+    },
+    {
+      title: 'Управление',
+      key: 'settings',
+      align: 'right',
+      width: 150,
+      render: (_: unknown, record) => (
+        <Button type="primary" size="small" onClick={() => openSettings(record.id)}>
+          Настройки
+        </Button>
       ),
     },
   ];
@@ -495,7 +589,7 @@ function CabinetPage() {
 
       <Tabs
         activeKey={activeTab}
-        onChange={(key) => setActiveTab(key as 'overview' | 'assistants')}
+        onChange={(key) => setActiveTab(key as 'overview' | 'assistants' | 'settings')}
         items={[
           {
             key: 'overview',
@@ -685,6 +779,20 @@ function CabinetPage() {
                   <Typography.Text type="secondary">
                     Сортировка по числу событий, требующих внимания, в порядке убывания.
                   </Typography.Text>
+                </Space>
+              </Card>
+            ),
+          },
+          {
+            key: 'settings',
+            label: 'Настройки',
+            children: (
+              <Card>
+                <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                  <Typography.Text type="secondary">
+                    Выберите помощника, чтобы открыть его параметры работы и пороги мониторинга.
+                  </Typography.Text>
+                  <Table rowKey="id" dataSource={agentRows} columns={settingsColumns} pagination={false} size="small" className="settings-table-compact" />
                 </Space>
               </Card>
             ),

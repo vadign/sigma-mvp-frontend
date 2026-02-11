@@ -309,6 +309,22 @@ body {
   overflow-x: hidden;
 }
 
+.settings-table-compact .ant-table-thead > tr > th,
+.settings-table-compact .ant-table-tbody > tr > td {
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.settings-table-compact .ant-tag {
+  margin-inline-end: 0;
+  padding: 1px 8px;
+  font-size: 12px;
+}
+
+.settings-table-compact .ant-switch {
+  min-width: 52px;
+}
+
 .info-card {
   height: 100%;
 }
